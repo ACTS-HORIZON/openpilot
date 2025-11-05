@@ -22,15 +22,13 @@ jobs:
 
       - name: Add upstream and fetch
         run: |
+          git submodule update --init --recursive
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git || true
           git fetch upstream
-          git checkout sync-test
-          git merge upstream/sync-test
-
-      - name: Update submodules
-        run: |
+          git checkout master
+          git add opendbc_repo
+          git merge upstream/master
           git submodule sync
-          git submodule update --init --recursive
 
       - name: Push changes
-        run: git push origin sync-test
+        run: git push origin master
