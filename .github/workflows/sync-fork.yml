@@ -1,0 +1,119 @@
+# GitHub Actions workflow to sync this fork with an upstream repository and update all submodules.
+# Usage:
+# - Run manually from the Actions tab (workflow_dispatch) or set a schedule (cron)
+# - Provide upstream repository in owner/repo form (default: commaai/openpilot)
+# - Choose strategy: merge (default), rebase, or reset (reset will hard-reset your branch to upstream and force-push)
+#
+# Notes:
+# - This workflow uses the GITHUB_TOKEN to push back to the fork. Ensure the token has write permissions (the workflow sets permissions).
+# - The workflow updates submodules and commits any pointer changes back to the fork.
+#
+name: Sync fork with upstream and update submodules
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_repo:
+        description: 'Upstream repository (owner/repo) to sync from'
+        required: true
+        default: 'sunnypilot/sunnypilot'
+      upstream_branch:
+        description: 'Branch in upstream to sync from'
+        required: true
+        default: 'master'
+      target_branch:
+        description: 'Branch in this repo to update'
+        required: true
+        default: 'master'
+      strategy:
+        description: 'Sync strategy: merge, rebase, or reset'
+        required: true
+        default: 'merge'
+  schedule:
+    # optional: daily at 03:00 UTC - you can remove or change this
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          ref: ${{ inputs.target_branch }}
+
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure upstream remote and fetch
+        run: |
+          # Add or update the upstream remote
+          git remote add upstream https://github.com/${{ inputs.upstream_repo }}.git 2>/dev/null || git remote set-url upstream https://github.com/${{ inputs.upstream_repo }}.git
+          git fetch --no-tags --prune upstream
+
+      - name: Sync with upstream (merge/rebase/reset)
+        env:
+          UPSTREAM_BRANCH: ${{ inputs.upstream_branch }}
+          STRATEGY: ${{ inputs.strategy }}
+        run: |
+          set -e
+          echo "Strategy: $STRATEGY"
+          case "$STRATEGY" in
+            merge)
+              # Merge upstream branch into current branch (fast-forward if possible)
+              git merge --no-edit upstream/"$UPSTREAM_BRANCH" || git merge --no-edit --ff-only upstream/"$UPSTREAM_BRANCH" || true
+              ;;
+            rebase)
+              # Rebase current branch on top of upstream
+              git rebase upstream/"$UPSTREAM_BRANCH" || { echo "Rebase failed; aborting rebase and exiting with error"; git rebase --abort || true; exit 1; }
+              ;;
+            reset)
+              # Hard reset current branch to exactly match upstream branch (will require force push)
+              git reset --hard upstream/"$UPSTREAM_BRANCH"
+              ;;
+            *)
+              echo "Unknown strategy: $STRATEGY"
+              exit 1
+              ;;
+          esac
+
+      - name: Update submodules (init & sync)
+        run: |
+          # Ensure .gitmodules are in sync, initialize and update recursively
+          git submodule sync --recursive || true
+          git submodule update --init --recursive --recommend-shallow || git submodule update --init --recursive
+          # Fetch latest in submodules (do not automatically change commits unless upstream pointer updated)
+          git submodule foreach --recursive 'git fetch --all --prune || true'
+
+      - name: Commit and push any changes (submodule pointer updates or merge)
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          STRATEGY: ${{ inputs.strategy }}
+        run: |
+          set -e
+          # Stage all changes (this will include updated submodule pointers if upstream moved them)
+          git add -A
+
+          if git diff-index --quiet HEAD --; then
+            echo "No changes to commit."
+          else
+            git commit -m "Sync with upstream/${{ inputs.upstream_branch }} and update submodules [skip ci]" || true
+            if [ "$STRATEGY" = "reset" ]; then
+              git push origin HEAD:"$TARGET_BRANCH" --force
+            else
+              git push origin HEAD:"$TARGET_BRANCH"
+            fi
+          fi
+
+      - name: Output result
+        run: |
+          echo "Sync job finished. Current branch HEAD:"
+          git rev-parse --abbrev-ref HEAD@{0} || true
+          git rev-parse --short HEAD || true
