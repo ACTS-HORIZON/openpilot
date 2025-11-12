@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git user
@@ -30,88 +30,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Add sunnypilot upstream and fetch
+      - name: Sync
+        continue-on-error: true
         run: |
-          git remote remove sunnypilot 2>/dev/null || true
-          git remote add sunnypilot https://github.com/sunnypilot/sunnypilot.git
-          git fetch sunnypilot --no-tags --prune
-
-      - id: get_branch
-        name: Determine sunnypilot default branch
-        run: |
-          DEFAULT_BRANCH=master
-
-      - name: Pull changes from sunnypilot upstream into current branch
-        run: |
-          UPSTREAM_BRANCH=master
-          # Ensure we have fetched the branch
-          git fetch sunnypilot $UPSTREAM_BRANCH --no-tags || true
-          # Try a fast-forward merge first, otherwise fallback to pulling
-          git merge --ff-only sunnypilot/$UPSTREAM_BRANCH -m "chore: fast-forward merge sunnypilot/$UPSTREAM_BRANCH" || git pull --no-edit sunnypilot $UPSTREAM_BRANCH || true
-
-      - name: Sync submodule urls and update submodules to master
-        run: |
-          # sync submodule URLs and fetch everything
-          git submodule sync --recursive || true
-          git submodule update --init --recursive --force
-          # For each submodule, attempt to checkout master and pull latest master
-          git submodule foreach --recursive '
-            echo "=== Submodule: $name ($path) ===";
-            git fetch --all --prune || true;
-
-            # Try to checkout a "master" branch, falling back to origin/master if necessary
-            if git show-ref --verify --quiet refs/heads/master; then
-              git checkout master || true;
-            else
-              # create local master tracking origin/master if origin/master exists
-              if git show-ref --verify --quiet refs/remotes/origin/master; then
-                git checkout -b master origin/master || true;
-              else
-                # if there's no master, try main
-                if git show-ref --verify --quiet refs/remotes/origin/main; then
-                  git checkout -b master origin/main || true;
-                fi
-              fi
-            fi
-
-            # Pull latest from origin/master (best-effort)
-            git pull origin master || git pull origin main || true
-          '
-
-      - name: Stage submodule reference changes (if any)
-        run: |
-          # After updating submodules, parent repo may have updated gitlinks.
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "Detected changes to commit."
-            git commit -m "chore: sync with sunnypilot upstream and update submodules to master" || true
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Push changes back to origin (optional)
-        if: ${{ github.event_name == 'workflow_dispatch' && contains(fromJson('["true","True","TRUE"]'), github.event.inputs.push_changes) || github.event_name == 'schedule' && always() }}
-        run: |
-          # Only push if we have a commit
-          if [ "${{ steps.stage.outputs.has_changes }}" != "true" ]; then
-            echo "No committed changes to push."
-            exit 0
-          fi
-
-          # Push commit and updated submodule references
-          git push origin HEAD
-          # Ensure submodule commits are available: try to push submodule repos if they are forks under this org (best-effort)
-          # (Note: pushing submodule repos themselves usually isn't needed/possible; this is best-effort and will not fail the workflow.)
-          git submodule foreach --recursive '
-            REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-            echo "Submodule remote: $REMOTE"
-            # If the remote points to this repository owner/org, try to push the master branch
-            if echo "$REMOTE" | grep -qi "github.com/ACTS-HORIZON"; then
-              git push origin master || true
-            fi
-          ' || true
-
-      - name: Done
-        run: echo "Sync finished."
+          git submodule update --init --recursive
+          git remote add upstream https://github.com/sunnypilot/sunnypilot.git
+          git fetch upstream
+          git checkout master
+          git add opendbc_repo
+          git merge upstream/master
+          git push
