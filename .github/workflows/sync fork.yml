@@ -20,16 +20,20 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Add upstream and fetch
+      - name: Init submodules
         continue-on-error: true
         run: |
           git submodule update --init --recursive
+
+      - name: Add upstream and fetch
+        run: |
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
           git checkout master
           git add opendbc_repo
           git merge upstream/master
           git submodule sync
+          
 
       - name: Push changes
         run: git push origin master
