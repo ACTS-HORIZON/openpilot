@@ -2,11 +2,6 @@ name: Sync with sunnypilot upstream
 
 on:
   workflow_dispatch:
-    inputs:
-      push_changes:
-        description: 'If "true", commit & push changes back to this repository'
-        required: false
-        default: 'false'
   schedule:
     # optional: daily at 03:00 UTC — remove or adjust as desired
     - cron: '0 3 * * *'
@@ -33,6 +28,8 @@ jobs:
       - name: Sync
         continue-on-error: true
         run: |
+          git add opendbc
+          git add panda
           git submodule update --init --recursive --remote
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
