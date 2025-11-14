@@ -13,12 +13,13 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository with submodules
-        uses: actions/checkout@v4
+      - name: Clone repository
+        uses: GuillaumeFalourd/clone-github-repo-action@v2.3
         with:
-          submodules: recursive
-          fetch-depth: 1
-          token: ${{ secrets.GITHUB_TOKEN }}
+          depth: 1
+          branch: 'master'
+          owner: 'ACTS-HORIZON'
+          repository: 'openpilot'
 
       - name: Configure git user
         run: |
@@ -28,9 +29,7 @@ jobs:
       - name: Sync
         continue-on-error: true
         run: |
-          git add opendbc
-          git add panda
-          git submodule update --init --recursive --remote
+          git submodule update --init --recursive
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
           git checkout master
