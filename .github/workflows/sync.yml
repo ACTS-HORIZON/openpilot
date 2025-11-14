@@ -14,17 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
-        uses: GuillaumeFalourd/clone-github-repo-action@v2.3
-        with:
-          depth: 1
-          branch: 'master'
-          owner: 'ACTS-HORIZON'
-          repository: 'openpilot'
+        run: |
+          git clone https://github.com/ACTS-HORIZON/openpilot.git
           
       - name: navigate to repository
         run: |
           cd openpilot
-          ls
 
       - name: Configure git user
         run: |
