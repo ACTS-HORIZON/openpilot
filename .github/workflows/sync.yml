@@ -26,6 +26,7 @@ jobs:
 
       - name: Sync
         run: |
+          git submodule init
           git pull --recurse
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
