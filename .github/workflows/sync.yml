@@ -24,6 +24,7 @@ jobs:
       - name: navigate to repository
         run: |
           cd openpilot
+          ls
 
       - name: Configure git user
         run: |
