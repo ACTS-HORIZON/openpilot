@@ -20,6 +20,10 @@ jobs:
           branch: 'master'
           owner: 'ACTS-HORIZON'
           repository: 'openpilot'
+          
+      - name: navigate to repository
+        run: |
+          cd openpilot
 
       - name: Configure git user
         run: |
@@ -27,12 +31,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Sync
-        continue-on-error: true
         run: |
           git submodule update --init --recursive
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
           git checkout master
           git add opendbc_repo
+
+      - name: Merge and Push
+        run: |
           git merge upstream/master
           git push
