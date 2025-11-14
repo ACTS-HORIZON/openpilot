@@ -24,12 +24,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync
+      - name: Pull Submodules
+        continue-on-error: true
         run: |
           git submodule init
           git pull --recurse
+
+      - name: Pull upstream
+        continue-on-error: true
+        run: |
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
+
+      - name: Final Touches
+        run: |
           git checkout master
           git add opendbc_repo
 
