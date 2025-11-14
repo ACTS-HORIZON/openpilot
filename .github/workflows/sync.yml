@@ -33,7 +33,7 @@ jobs:
       - name: Sync
         continue-on-error: true
         run: |
-          git submodule update --init --recursive
+          git submodule update --init --recursive --remote
           git remote add upstream https://github.com/sunnypilot/sunnypilot.git
           git fetch upstream
           git checkout master
