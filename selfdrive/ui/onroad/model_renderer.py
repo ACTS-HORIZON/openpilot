@@ -27,6 +27,12 @@ NO_THROTTLE_COLORS = [
   rl.Color(242, 242, 242, 0),   # HSLF(112/360, 0.0, 0.95, 0.0)
 ]
 
+DISENGAGED_COLORS = [
+  rl.Color(150, 150, 150, 102),
+  rl.Color(150, 150, 150, 89),
+  rl.Color(150, 150, 150, 0),
+]
+
 
 @dataclass
 class ModelPoints:
@@ -58,6 +64,7 @@ class ModelRenderer(Widget):
     self._lane_lines = [ModelPoints() for _ in range(4)]
     self._road_edges = [ModelPoints() for _ in range(2)]
     self._acceleration_x = np.empty((0,), dtype=np.float32)
+    self._path_width_state = 0.0
 
     # Transform matrix (3x3 for car space to screen space)
     self._car_space_transform = np.zeros((3, 3), dtype=np.float32)
@@ -96,6 +103,14 @@ class ModelRenderer(Widget):
     # Update state
     self._experimental_mode = sm['selfdriveState'].experimentalMode
 
+    enabled = ui_state.engaged
+    dt = 1.0 / gui_app.target_fps
+    prev_path_width = self._path_width_state
+    if enabled:
+      self._path_width_state = min(1.0, self._path_width_state + dt / 0.5)
+    else:
+      self._path_width_state = max(0.0, self._path_width_state - dt / 0.5)
+
     live_calib = sm['liveCalibration']
     self._path_offset_z = live_calib.height[0] if live_calib.height else HEIGHT_INIT[0]
 
@@ -109,7 +124,7 @@ class ModelRenderer(Widget):
 
     # Update model data when needed
     model_updated = sm.updated['modelV2']
-    if model_updated or sm.updated['radarState'] or self._transform_dirty:
+    if model_updated or sm.updated['radarState'] or self._transform_dirty or prev_path_width != self._path_width_state:
       if model_updated:
         self._update_raw_points(model)
 
@@ -180,8 +195,9 @@ class ModelRenderer(Widget):
       max_distance = np.clip(lead_d - min(lead_d * 0.35, 10.0), 0.0, max_distance)
 
     max_idx = self._get_path_length_idx(path_x_array, max_distance)
+    width = np.interp(self._path_width_state, [0.0, 1.0], [0.5, 0.9])
     self._path.projected_points = self._map_line_to_polygon(
-      self._path.raw_points, 0.9, self._path_offset_z, max_idx, max_distance, allow_invert=False
+      self._path.raw_points, width, self._path_offset_z, max_idx, max_distance, allow_invert=False
     )
 
     self._update_experimental_gradient()
@@ -216,6 +232,16 @@ class ModelRenderer(Widget):
 
       # Use HSL to RGB conversion
       color = self._hsla_to_color(path_hue / 360.0, saturation, lightness, alpha)
+
+      if self._path_width_state < 1.0:
+        t = self._path_width_state
+        inv_t = 1.0 - t
+        color = rl.Color(
+          int(inv_t * 100 + t * color.r),
+          int(inv_t * 100 + t * color.g),
+          int(inv_t * 100 + t * color.b),
+          color.a
+        )
 
       gradient_stops.append(lin_grad_point)
       segment_colors.append(color)
@@ -291,6 +317,10 @@ class ModelRenderer(Widget):
       # Blend throttle/no throttle colors based on transition
       blend_factor = round(self._blend_filter.x * 100) / 100
       blended_colors = self._blend_colors(NO_THROTTLE_COLORS, THROTTLE_COLORS, blend_factor)
+
+      if self._path_width_state < 1.0:
+        blended_colors = self._blend_colors(DISENGAGED_COLORS, blended_colors, self._path_width_state)
+
       gradient = Gradient(
         start=(0.0, 1.0),  # Bottom of path
         end=(0.0, 0.0),  # Top of path
