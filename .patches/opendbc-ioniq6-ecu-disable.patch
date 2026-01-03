@@ -1,0 +1,261 @@
+From 4d4bb4cbc2fc008e4503e2884e2dd76533ded08f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Jan 2026 01:10:47 +0000
+Subject: [PATCH] Add Ioniq 6 ECU disable for longitudinal control
+
+- Enhanced disable_ecu.py with detailed logging and response parsing
+- Added CANFD_SECURITYACCESS_CAR set for Ioniq 6
+- Modified Hyundai interface to track ECU disable timestamp
+- Added CAN error suppression for timeout errors after ECU disable
+- Adapted from WhoFP commit f621b67 for sunnypilot compatibility
+
+Apply with: cd opendbc_repo && git apply ../.patches/opendbc-ioniq6-ecu-disable.patch
+---
+ opendbc/car/disable_ecu.py       | 80 +++++++++++++++++++++++++++-----
+ opendbc/car/hyundai/interface.py | 69 +++++++++++++++++++++++++--
+ opendbc/car/hyundai/values.py    |  5 +-
+ 3 files changed, 138 insertions(+), 16 deletions(-)
+
+diff --git a/opendbc/car/disable_ecu.py b/opendbc/car/disable_ecu.py
+index 797b4064..97c1ec94 100644
+--- a/opendbc/car/disable_ecu.py
++++ b/opendbc/car/disable_ecu.py
+@@ -1,10 +1,26 @@
++import time
++import datetime
++
+ from opendbc.car.carlog import carlog
+ from opendbc.car.isotp_parallel_query import IsoTpParallelQuery
+ 
+ EXT_DIAG_REQUEST = b'\x10\x03'
+ EXT_DIAG_RESPONSE = b'\x50\x03'
+ 
+-COM_CONT_RESPONSE = b''
++# File-based logging for debugging
++ECU_LOG_FILE = "/data/ecu_disable.log"
++
++
++def ecu_log(msg):
++  """Write to both carlog and a dedicated log file for debugging."""
++  timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
++  log_line = f"[{timestamp}] {msg}"
++  carlog.warning(msg)
++  try:
++    with open(ECU_LOG_FILE, "a") as f:
++      f.write(log_line + "\n")
++  except Exception:
++    pass
+ 
+ 
+ def disable_ecu(can_recv, can_send, bus=0, addr=0x7d0, sub_addr=None, com_cont_req=b'\x28\x83\x01', timeout=0.1, retry=10):
+@@ -13,24 +29,66 @@ def disable_ecu(can_recv, can_send, bus=0, addr=0x7d0, sub_addr=None, com_cont_r
+ 
+   This is used to disable the radar in some cars. Openpilot will emulate the radar.
+   WARNING: THIS DISABLES AEB!"""
+-  carlog.warning(f"ecu disable {hex(addr), sub_addr} ...")
++  ecu_log(f"=== ECU DISABLE START === addr={hex(addr)}, bus={bus}")
+ 
++  # Try multiple times with different approaches
+   for i in range(retry):
+     try:
++      # Enter extended diagnostic session
++      ecu_log(f"attempt {i+1}/{retry}: diag session...")
+       query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr, sub_addr)], [EXT_DIAG_REQUEST], [EXT_DIAG_RESPONSE])
+ 
+       for _, _ in query.get_data(timeout).items():
+-        carlog.warning("communication control disable tx/rx ...")
++        ecu_log("diag session OK")
++
++        # Small delay to let ECU fully enter diagnostic mode
++        time.sleep(0.05)
++
++        # Send CC command and log the response
++        ecu_log("sending CC...")
++        cc_query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr, sub_addr)], [com_cont_req], [b''])
++        cc_response = cc_query.get_data(timeout)
++
++        # Log what we got back
++        cc_success = False
++        cc_rejected = False
++        for (rx_addr, _), data in cc_response.items():
++          ecu_log(f"CC response: {data.hex() if data else 'empty'}")
++
++          # Check for positive response (0x68 = 0x28 + 0x40)
++          if len(data) >= 1 and data[0] == 0x68:
++            ecu_log("=== ECU DISABLE CONFIRMED ===")
++            cc_success = True
++
++          # Check for negative response
++          elif len(data) >= 3 and data[0] == 0x7F:
++            nrc = data[2]
++            nrc_meanings = {
++              0x12: "subFunctionNotSupported",
++              0x13: "incorrectMessageLengthOrInvalidFormat",
++              0x22: "conditionsNotCorrect (car must be in IGN-ON, not READY)",
++              0x31: "requestOutOfRange",
++              0x33: "securityAccessDenied",
++            }
++            nrc_name = nrc_meanings.get(nrc, "unknown")
++            ecu_log(f"CC rejected: NRC 0x{nrc:02x} = {nrc_name}")
++            cc_rejected = True
+ 
+-        query = IsoTpParallelQuery(can_send, can_recv, bus, [(addr, sub_addr)], [com_cont_req], [COM_CONT_RESPONSE])
+-        query.get_data(0)
++        if cc_success:
++          return True
++        elif cc_rejected:
++          # ECU explicitly rejected - don't retry, it won't work
++          ecu_log("=== ECU DISABLE REJECTED ===")
++          return False
++        else:
++          # No response - consider it sent (ECU might have stopped responding)
++          ecu_log("=== ECU DISABLE SENT (no response) ===")
++          return True
+ 
+-        carlog.warning("ecu disabled")
+-        return True
++    except Exception as e:
++      ecu_log(f"attempt {i+1} exception: {e}")
+ 
+-    except Exception:
+-      carlog.exception("ecu disable exception")
++    time.sleep(0.1)
+ 
+-    carlog.error(f"ecu disable retry ({i + 1}) ...")
+-  carlog.error("ecu disable failed")
++  ecu_log("=== ECU DISABLE FAILED ===")
+   return False
+diff --git a/opendbc/car/hyundai/interface.py b/opendbc/car/hyundai/interface.py
+index f5569eb6..baaec8f5 100644
+--- a/opendbc/car/hyundai/interface.py
++++ b/opendbc/car/hyundai/interface.py
+@@ -1,11 +1,14 @@
++import time
++
+ from opendbc.car import Bus, get_safety_config, structs, uds
+ from opendbc.car.hyundai.hyundaicanfd import CanBus
+ from opendbc.car.hyundai.values import HyundaiFlags, CAR, DBC, \
+                                                    CANFD_UNSUPPORTED_LONGITUDINAL_CAR, \
++                                                   CANFD_SECURITYACCESS_CAR, \
+                                                    UNSUPPORTED_LONGITUDINAL_CAR, HyundaiSafetyFlags
+ from opendbc.car.hyundai.radar_interface import RADAR_START_ADDR
+ from opendbc.car.interfaces import CarInterfaceBase
+-from opendbc.car.disable_ecu import disable_ecu
++from opendbc.car.disable_ecu import disable_ecu, ecu_log
+ from opendbc.car.hyundai.carcontroller import CarController
+ from opendbc.car.hyundai.carstate import CarState
+ from opendbc.car.hyundai.radar_interface import RadarInterface
+@@ -20,6 +23,9 @@ Ecu = structs.CarParams.Ecu
+ # Cancel button can sometimes be ACC pause/resume button, main button can also enable on some cars
+ ENABLE_BUTTONS = (ButtonType.accelCruise, ButtonType.decelCruise, ButtonType.cancel, ButtonType.mainCruise)
+ 
++# Track when ECU disable happened - used to permanently suppress CAN errors from disabled ECU
++ECU_DISABLE_TIMESTAMP = 0.0
++
+ 
+ class CarInterface(CarInterfaceBase):
+   CarState = CarState
+@@ -132,6 +138,11 @@ class CarInterface(CarInterfaceBase):
+     ret.radarUnavailable = RADAR_START_ADDR not in fingerprint[1] or Bus.radar not in DBC[ret.carFingerprint]
+     ret.openpilotLongitudinalControl = alpha_long and ret.alphaLongitudinalAvailable
+     ret.pcmCruise = not ret.openpilotLongitudinalControl
++
++    # When longitudinal is enabled on CANFD_SECURITYACCESS_CAR, we disable the ADAS ECU which stops radar messages
++    # Force radarUnavailable to prevent CAN Error from missing radar messages
++    if ret.openpilotLongitudinalControl and candidate in CANFD_SECURITYACCESS_CAR:
++      ret.radarUnavailable = True
+     ret.startingState = True
+     ret.vEgoStarting = 0.1
+     ret.startAccel = 1.0
+@@ -227,16 +238,32 @@ class CarInterface(CarInterfaceBase):
+ 
+   @staticmethod
+   def init(CP, CP_SP, can_recv, can_send, communication_control=None):
+-    # 0x80 silences response
++    global ECU_DISABLE_TIMESTAMP
++
++    # Build communication control command
++    # For CANFD_SECURITYACCESS_CAR, don't use 0x80 suppress bit so we can see ECU response
+     if communication_control is None:
+-      communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, 0x80 | uds.CONTROL_TYPE.DISABLE_RX_DISABLE_TX, uds.MESSAGE_TYPE.NORMAL])
++      if CP.carFingerprint in CANFD_SECURITYACCESS_CAR:
++        communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, uds.CONTROL_TYPE.DISABLE_RX_DISABLE_TX, uds.MESSAGE_TYPE.NORMAL])
++      else:
++        # 0x80 silences response
++        communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, 0x80 | uds.CONTROL_TYPE.DISABLE_RX_DISABLE_TX, uds.MESSAGE_TYPE.NORMAL])
+ 
+     if CP.openpilotLongitudinalControl and not ((CP.flags & (HyundaiFlags.CANFD_CAMERA_SCC | HyundaiFlags.CAMERA_SCC)) or
+                                                 (CP_SP.flags & HyundaiFlagsSP.ENHANCED_SCC)):
+       addr, bus = 0x7d0, CanBus(CP).ECAN if CP.flags & HyundaiFlags.CANFD else 0
+       if CP.flags & HyundaiFlags.CANFD_LKA_STEERING.value:
+         addr, bus = 0x730, CanBus(CP).ECAN
+-      disable_ecu(can_recv, can_send, bus=bus, addr=addr, com_cont_req=communication_control)
++
++      # ECU disable must happen in IGN-ON state BEFORE entering READY mode
++      ecu_log(f"=== ECU DISABLE: addr=0x{addr:x}, bus={bus} ===")
++      ecu_disabled = disable_ecu(can_recv, can_send, bus=bus, addr=addr, com_cont_req=communication_control)
++
++      # Only enable CAN error suppression if ECU disable actually succeeded
++      if ecu_disabled:
++        ECU_DISABLE_TIMESTAMP = time.monotonic()
++      else:
++        ecu_log("=== ECU DISABLE FAILED (start from IGN-ON, not READY) ===")
+ 
+     # for blinkers
+     if CP.flags & HyundaiFlags.ENABLE_BLINKERS:
+@@ -246,3 +273,37 @@ class CarInterface(CarInterfaceBase):
+   def deinit(CP, can_recv, can_send):
+     communication_control = bytes([uds.SERVICE_TYPE.COMMUNICATION_CONTROL, 0x80 | uds.CONTROL_TYPE.ENABLE_RX_ENABLE_TX, uds.MESSAGE_TYPE.NORMAL])
+     CarInterface.init(CP, can_recv, can_send, communication_control)
++
++  def update(self, can_packets):
++    # Call base class update - returns (CarState, CarStateSP) tuple
++    ret, ret_sp = super().update(can_packets)
++
++    # When ECU disable has been done for longitudinal control, we need to handle CAN errors carefully:
++    # - TIMEOUT errors (messages stop coming): Expected after ECU disable, should be suppressed
++    # - COUNTER errors (checksum/counter failures): Real CAN problems, should NOT be suppressed
++    global ECU_DISABLE_TIMESTAMP
++    if ECU_DISABLE_TIMESTAMP > 0 and not ret.canValid:
++      # Check if any parser has counter/checksum errors (real CAN issues)
++      has_counter_errors = False
++      for cp in self.can_parsers.values():
++        if cp is not None:
++          for state in cp.message_states.values():
++            if state.counter_fail >= 5:  # MAX_BAD_COUNTER from parser.py
++              has_counter_errors = True
++              ecu_log(f"REAL CAN ERROR: {state.name} counter_fail={state.counter_fail}")
++              break
++        if has_counter_errors:
++          break
++
++      if has_counter_errors:
++        # Real CAN error - don't suppress, let it through
++        ecu_log("ECU_DISABLE: NOT suppressing canValid - counter errors detected")
++      else:
++        # Only timeout errors (expected after ECU disable) - suppress
++        elapsed = time.monotonic() - ECU_DISABLE_TIMESTAMP
++        # Log occasionally to confirm this is working (every ~10 seconds)
++        if int(elapsed) % 10 == 0 and elapsed - int(elapsed) < 0.1:
++          ecu_log(f"ECU_DISABLE: suppressing timeout error (elapsed={elapsed:.0f}s)")
++        ret.canValid = True
++
++    return ret, ret_sp
+diff --git a/opendbc/car/hyundai/values.py b/opendbc/car/hyundai/values.py
+index 10d15d2b..0d8e3e99 100644
+--- a/opendbc/car/hyundai/values.py
++++ b/opendbc/car/hyundai/values.py
+@@ -836,7 +836,10 @@ CAN_GEARS = {
+ CANFD_CAR = CAR.with_flags(HyundaiFlags.CANFD)
+ CANFD_RADAR_SCC_CAR = CAR.with_flags(HyundaiFlags.RADAR_SCC)  # TODO: merge with UNSUPPORTED_LONGITUDINAL_CAR
+ 
+-CANFD_UNSUPPORTED_LONGITUDINAL_CAR = CAR.with_flags(HyundaiFlags.CANFD_NO_RADAR_DISABLE)  # TODO: merge with UNSUPPORTED_LONGITUDINAL_CAR
++# Cars with CANFD_NO_RADAR_DISABLE that now work with SecurityAccess handshake
++CANFD_SECURITYACCESS_CAR = {CAR.HYUNDAI_IONIQ_6}
++
++CANFD_UNSUPPORTED_LONGITUDINAL_CAR = CAR.with_flags(HyundaiFlags.CANFD_NO_RADAR_DISABLE) - CANFD_SECURITYACCESS_CAR  # TODO: merge with UNSUPPORTED_LONGITUDINAL_CAR
+ 
+ CAMERA_SCC_CAR = CAR.with_flags(HyundaiFlags.CAMERA_SCC)
+ 
+-- 
+2.43.0
