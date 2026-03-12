@@ -28,9 +28,6 @@ KI = 0.15
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
 
-FRICTION_SCALE_SPEEDS = [0.0, 7.5, 12.5, 20, 25, 35]  # m/s
-FRICTION_SCALE =        [1.0, 1.0, 0.8, 0.6, 0.5, 0.25]
-
 LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.3
@@ -91,8 +88,7 @@ class LatControlTorque(LatControl):
     ff = gravity_adjusted_future_lateral_accel
     # latAccelOffset corrects roll compensation bias from device roll misalignment relative to car roll
     ff -= self.torque_params.latAccelOffset
-    friction_scale = float(np.interp(CS.vEgo, FRICTION_SCALE_SPEEDS, FRICTION_SCALE))
-    ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, FRICTION_THRESHOLD, self.torque_params, friction_scale)
+    ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, FRICTION_THRESHOLD, self.torque_params)
 
     if not active:
       output_torque = 0.0
