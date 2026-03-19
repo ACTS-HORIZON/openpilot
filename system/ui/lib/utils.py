@@ -16,3 +16,8 @@ class GuiStyleContext:
   def __exit__(self, exc_type, exc_value, traceback):
     for control, prop, prev_value in self.prev_styles:
       rl.gui_set_style(control, prop, prev_value)
+
+def _resolve_value(value, default=""):
+  if callable(value):
+    return value()
+  return value if value is not None else default

@@ -10,6 +10,7 @@ from openpilot.system.ui.widgets.button import Button, ButtonStyle
 from openpilot.system.ui.widgets.toggle import Toggle, WIDTH as TOGGLE_WIDTH, HEIGHT as TOGGLE_HEIGHT
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets.html_render import HtmlRenderer, ElementType
+from openpilot.system.ui.lib.utils import _resolve_value
 
 ITEM_BASE_WIDTH = 600
 ITEM_BASE_HEIGHT = 170
@@ -31,10 +32,6 @@ BUTTON_FONT_WEIGHT = FontWeight.MEDIUM
 TEXT_PADDING = 20
 
 
-def _resolve_value(value, default=""):
-  if callable(value):
-    return value()
-  return value if value is not None else default
 
 
 # Abstract base class for right-side items
