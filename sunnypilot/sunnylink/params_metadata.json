@@ -1215,6 +1215,10 @@
     "title": "Subaru Stop and Go",
     "description": ""
   },
+  "SpeedDependentTorqueToggle": {
+    "title": "Speed-Dependent Self-Tune (Beta)",
+    "description": "Learns separate torque parameters at different speeds. Improves steering at both low and high speeds for supported cars."
+  },
   "SubaruStopAndGoManualParkingBrake": {
     "title": "Subaru Stop and Go Manual Parking Brake",
     "description": ""
