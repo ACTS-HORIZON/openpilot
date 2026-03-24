@@ -7,6 +7,7 @@ import threading
 import time
 import traceback
 import datetime
+from collections import defaultdict
 from collections.abc import Iterator
 
 from cereal import log
@@ -86,6 +87,7 @@ class Uploader:
 
     self.immediate_folders = ["crash/", "boot/"]
     self.immediate_priority = {"qlog": 0, "qlog.zst": 0, "qcamera.ts": 1}
+    self.priority_dict = defaultdict(lambda: 1000, self.immediate_priority)
 
   def list_upload_files(self, metered: bool) -> Iterator[tuple[str, str, str]]:
     r = self.params.get("AthenadRecentlyViewedRoutes")
@@ -101,7 +103,7 @@ class Uploader:
       if any(name.endswith(".lock") for name in names):
         continue
 
-      for name in sorted(names, key=lambda n: self.immediate_priority.get(n, 1000)):
+      for name in sorted(names, key=self.priority_dict.__getitem__):
         key = os.path.join(logdir, name)
         fn = os.path.join(path, name)
         # skip files already uploaded
