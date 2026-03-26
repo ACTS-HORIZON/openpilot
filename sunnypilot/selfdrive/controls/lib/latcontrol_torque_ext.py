@@ -5,6 +5,8 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 
+import numpy as np
+
 from openpilot.sunnypilot.selfdrive.controls.lib.nnlc.nnlc import NeuralNetworkLateralControl
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext_override import LatControlTorqueExtOverride
 
@@ -17,6 +19,8 @@ class LatControlTorqueExt(NeuralNetworkLateralControl, LatControlTorqueExtOverri
   def update(self, CS, VM, pid, params, ff, pid_log, setpoint, measurement, calibrated_pose, roll_compensation,
              desired_lateral_accel, actual_lateral_accel, lateral_accel_deadzone, gravity_adjusted_lateral_accel,
              desired_curvature, actual_curvature, steer_limited_by_safety, output_torque):
+    # Store vEgo for update_override_torque_params (which runs before this, next frame)
+    self._last_vego = CS.vEgo
     self._ff = ff
     self._pid = pid
     self._pid_log = pid_log
@@ -36,3 +40,29 @@ class LatControlTorqueExt(NeuralNetworkLateralControl, LatControlTorqueExtOverri
     self.update_neural_network_feedforward(CS, params, calibrated_pose)
 
     return self._pid_log, self._output_torque
+
+  def update_speed_dep_torque(self, tp):
+    """Apply speed-dependent learned values from torqued.
+    Uses learned values for valid bins, global filtered as fallback."""
+    speed_bp = list(tp.speedBinCenters)
+    if not speed_bp:
+      self._speed_dep_active = False
+      return
+
+    factors = list(tp.speedBinLatAccelFactors)
+    frictions = list(tp.speedBinFrictions)
+    valid_bp = list(tp.speedBinValid)
+    global_factor = tp.latAccelFactorFiltered
+    global_fric = tp.frictionCoefficientFiltered
+
+    self._speed_dep_active = True
+    self._speed_dep_speed_bp = speed_bp
+    self._speed_dep_lat_accel_factor_bp = [factors[i] if valid_bp[i] else global_factor for i in range(len(speed_bp))]
+    self._speed_dep_friction_bp = [frictions[i] if valid_bp[i] else global_fric for i in range(len(speed_bp))]
+
+    # Set representative values at 20 m/s for PID limits (actual per-frame
+    # interpolation happens in update_override_torque_params before each frame)
+    self.lac_torque.torque_params.latAccelFactor = float(np.interp(20.0, speed_bp, self._speed_dep_lat_accel_factor_bp))
+    self.lac_torque.torque_params.latAccelOffset = tp.latAccelOffsetFiltered
+    self.lac_torque.torque_params.friction = float(np.interp(20.0, speed_bp, self._speed_dep_friction_bp))
+    self.lac_torque.update_limits()
