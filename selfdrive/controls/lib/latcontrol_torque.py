@@ -35,8 +35,8 @@ LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 
 # Normalize PID gains by latAccelFactor so all cars have similar effective loop gain.
 # Cars with high latAccelFactor (powerful EPS) get proportionally lower PID gains.
-# Reference point: latAccelFactor=1.5 where the current gains work well (typical Toyota/Honda).
-REFERENCE_LAT_ACCEL_FACTOR = 1.5
+# Reference point: latAccelFactor=2.0 where the current gains work well (typical Toyota/Honda).
+REFERENCE_LAT_ACCEL_FACTOR = 2.0
 
 # MDPS centering torque feedforward: compensates for EPS restoring force proportional to steering angle.
 # Reduces integrator load during steady-state cornering and improves transient response.
@@ -55,7 +55,7 @@ class LatControlTorque(LatControl):
     self.lateral_accel_from_torque = CI.lateral_accel_from_torque()
     self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
     self.pid = PIDController([INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]],
-                             KI * self.gain_scale, rate=1/self.dt)
+                             KI, rate=1/self.dt)
     self.update_limits()
     self.steering_angle_deadzone_deg = self.torque_params.steeringAngleDeadzoneDeg
     self.lat_accel_request_buffer_len = int(LAT_ACCEL_REQUEST_BUFFER_SECONDS / self.dt)
@@ -75,7 +75,6 @@ class LatControlTorque(LatControl):
   def _update_gain_scale(self):
     self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
     self.pid._k_p = [INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]]
-    self.pid._k_i = [[0], [KI * self.gain_scale]]
 
   def update_limits(self):
     self.pid.set_limits(self.lateral_accel_from_torque(self.steer_max, self.torque_params),
