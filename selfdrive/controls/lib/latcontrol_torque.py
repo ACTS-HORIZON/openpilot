@@ -32,19 +32,6 @@ LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.3
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
-
-# Normalize PID gains by latAccelFactor so all cars have similar effective loop gain.
-# Cars with high latAccelFactor (powerful EPS) get proportionally lower PID gains.
-# Reference point: latAccelFactor=2.0 where the current gains work well (typical Toyota/Honda).
-REFERENCE_LAT_ACCEL_FACTOR = 2.0
-
-# MDPS centering torque feedforward: compensates for EPS restoring force proportional to steering angle.
-# Reduces integrator load during steady-state cornering and improves transient response.
-# Set to 0.0 to disable. Estimate from logs using tools/tuning/estimate_centering_gain.py.
-# Initial testing showed weak/inconclusive correlation (R²=0.14) — disabled by default
-# pending more highway data (25+ m/s) with balanced left/right turns.
-K_CENTERING_ANGLE = 0.0
-
 VERSION = 1
 
 class LatControlTorque(LatControl):
@@ -53,9 +40,7 @@ class LatControlTorque(LatControl):
     self.torque_params = CP.lateralTuning.torque.as_builder()
     self.torque_from_lateral_accel = CI.torque_from_lateral_accel()
     self.lateral_accel_from_torque = CI.lateral_accel_from_torque()
-    self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
-    self.pid = PIDController([INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]],
-                             KI * self.gain_scale, rate=1/self.dt)
+    self.pid = PIDController([INTERP_SPEEDS, KP_INTERP], KI, rate=1/self.dt)
     self.update_limits()
     self.steering_angle_deadzone_deg = self.torque_params.steeringAngleDeadzoneDeg
     self.lat_accel_request_buffer_len = int(LAT_ACCEL_REQUEST_BUFFER_SECONDS / self.dt)
@@ -69,13 +54,7 @@ class LatControlTorque(LatControl):
     self.torque_params.latAccelFactor = latAccelFactor
     self.torque_params.latAccelOffset = latAccelOffset
     self.torque_params.friction = friction
-    self._update_gain_scale()
     self.update_limits()
-
-  def _update_gain_scale(self):
-    self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
-    self.pid._k_p = [INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]]
-    self.pid._k_i = [[0], [KI * self.gain_scale]]
 
   def update_limits(self):
     self.pid.set_limits(self.lateral_accel_from_torque(self.steer_max, self.torque_params),
@@ -84,7 +63,6 @@ class LatControlTorque(LatControl):
   def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, calibrated_pose, curvature_limited, lat_delay):
     # Override torque params from extension
     if self.extension.update_override_torque_params(self.torque_params):
-      self._update_gain_scale()
       self.update_limits()
 
     pid_log = log.ControlsState.LateralTorqueState.new_message()
@@ -111,10 +89,6 @@ class LatControlTorque(LatControl):
     # latAccelOffset corrects roll compensation bias from device roll misalignment relative to car roll
     ff -= self.torque_params.latAccelOffset
     ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, FRICTION_THRESHOLD, self.torque_params)
-
-    # Compensate for MDPS centering torque (proportional to steering angle)
-    steering_angle = CS.steeringAngleDeg - params.angleOffsetDeg
-    ff += K_CENTERING_ANGLE * steering_angle * self.gain_scale
 
     if not active:
       output_torque = 0.0
