@@ -55,7 +55,7 @@ class LatControlTorque(LatControl):
     self.lateral_accel_from_torque = CI.lateral_accel_from_torque()
     self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
     self.pid = PIDController([INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]],
-                             KI, rate=1/self.dt)
+                             KI * self.gain_scale, rate=1/self.dt)
     self.update_limits()
     self.steering_angle_deadzone_deg = self.torque_params.steeringAngleDeadzoneDeg
     self.lat_accel_request_buffer_len = int(LAT_ACCEL_REQUEST_BUFFER_SECONDS / self.dt)
@@ -75,6 +75,7 @@ class LatControlTorque(LatControl):
   def _update_gain_scale(self):
     self.gain_scale = REFERENCE_LAT_ACCEL_FACTOR / max(self.torque_params.latAccelFactor, 0.5)
     self.pid._k_p = [INTERP_SPEEDS, [kp * self.gain_scale for kp in KP_INTERP]]
+    self.pid._k_i = [[0], [KI * self.gain_scale]]
 
   def update_limits(self):
     self.pid.set_limits(self.lateral_accel_from_torque(self.steer_max, self.torque_params),
