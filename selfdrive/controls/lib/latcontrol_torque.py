@@ -41,7 +41,9 @@ REFERENCE_LAT_ACCEL_FACTOR = 1.5
 # MDPS centering torque feedforward: compensates for EPS restoring force proportional to steering angle.
 # Reduces integrator load during steady-state cornering and improves transient response.
 # Set to 0.0 to disable. Estimate from logs using tools/tuning/estimate_centering_gain.py.
-K_CENTERING_ANGLE = 0.003
+# Initial testing showed weak/inconclusive correlation (R²=0.14) — disabled by default
+# pending more highway data (25+ m/s) with balanced left/right turns.
+K_CENTERING_ANGLE = 0.0
 
 VERSION = 1
 
