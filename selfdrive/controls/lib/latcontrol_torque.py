@@ -29,6 +29,7 @@ INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
 
 LP_FILTER_CUTOFF_HZ = 1.2
+MEASUREMENT_LP_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.3
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
@@ -47,6 +48,7 @@ class LatControlTorque(LatControl):
     self.lat_accel_request_buffer = deque([0.] * self.lat_accel_request_buffer_len , maxlen=self.lat_accel_request_buffer_len)
     self.lookahead_frames = int(JERK_LOOKAHEAD_SECONDS / self.dt)
     self.jerk_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * LP_FILTER_CUTOFF_HZ), self.dt)
+    self.measurement_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * MEASUREMENT_LP_CUTOFF_HZ), self.dt)
 
     self.extension = LatControlTorqueExt(self, CP, CP_SP, CI)
 
@@ -69,6 +71,7 @@ class LatControlTorque(LatControl):
     pid_log.version = VERSION
     measured_curvature = -VM.calc_curvature(math.radians(CS.steeringAngleDeg - params.angleOffsetDeg), CS.vEgo, params.roll)
     measurement = measured_curvature * CS.vEgo ** 2
+    measurement = self.measurement_filter.update(measurement)
     future_desired_lateral_accel = desired_curvature * CS.vEgo ** 2
     self.lat_accel_request_buffer.append(future_desired_lateral_accel)
 
