@@ -17,6 +17,7 @@ from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.modeld.modeld_base import ModelStateBase
 from openpilot.sunnypilot.selfdrive.controls.lib.blinker_pause_lateral import BlinkerPauseLateral
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_v0 import LatControlTorque as LatControlTorqueV0
+from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_v2 import LatControlTorque as LatControlTorqueV2
 
 
 class ControlsExt(ModelStateBase):
@@ -40,8 +41,18 @@ class ControlsExt(ModelStateBase):
     if not enforce_torque_control:
       return lac
 
-    if torque_versions == 0.0:  # v0
-      return LatControlTorqueV0(self.CP, self.CP_SP, CI, dt)
+    try:
+      torque_version = float(torque_versions) if torque_versions is not None else None
+    except (ValueError, TypeError):
+      torque_version = None
+
+    if torque_version is not None:
+      if torque_version == 0.0:
+        return LatControlTorqueV0(self.CP, self.CP_SP, CI, dt)
+      elif torque_version == 2.0:
+        return LatControlTorqueV2(self.CP, self.CP_SP, CI, dt)
+      else:
+        return lac
     else:
       return lac
 
