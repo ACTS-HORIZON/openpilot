@@ -23,11 +23,14 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext import La
 # to be overcome to move it at all, this is compensated for too.
 
 # V2 Architecture:
-# - setpoint = future_desired_lat_accel (architecturally consistent)
-# - ff = purely anticipatory (roll, offset, sign-based friction)
+# - setpoint = expected_lat_accel (P sees residual error only, not full correction)
+# - ff = future_lat_accel (main corrective action) + anticipatory terms
 # - jerk = separate anticipatory term (not mixed with error in friction)
 # - error-dependent friction = separate get_friction(error) call
 # - measurement_filter at 1.8 Hz for MDPS resonance damping
+#
+# Rationale: P sees (expected - measured), FF carries future_lat_accel which is the main
+# correction. P only handles the residual. This avoids P being over-aggressive.
 
 KP = 0.8
 KI = 0.15
@@ -93,14 +96,15 @@ class LatControlTorque(LatControl):
 
     delay_frames = int(np.clip(lat_delay / self.dt + 1, 1, self.lat_accel_request_buffer_len))
     expected_lateral_accel = self.lat_accel_request_buffer[-delay_frames]
-    setpoint = future_desired_lateral_accel
+    setpoint = expected_lateral_accel
     error = setpoint - measurement
 
     lookahead_idx = int(np.clip(-delay_frames + self.lookahead_frames, -self.lat_accel_request_buffer_len+1, -2))
     raw_lateral_jerk = (self.lat_accel_request_buffer[lookahead_idx+1] - self.lat_accel_request_buffer[lookahead_idx-1]) / (2 * self.dt)
     desired_lateral_jerk = self.jerk_filter.update(raw_lateral_jerk)
 
-    ff = -roll_compensation
+    ff = future_desired_lateral_accel
+    ff -= roll_compensation
     ff -= self.torque_params.latAccelOffset
     ff += friction_static(desired_curvature, self.torque_params)
     ff += JERK_GAIN * desired_lateral_jerk
