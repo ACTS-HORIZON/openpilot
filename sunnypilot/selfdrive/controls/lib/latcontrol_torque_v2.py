@@ -32,11 +32,11 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext import La
 # Rationale: P sees (expected - measured), FF carries future_lat_accel which is the main
 # correction. P only handles the residual. This avoids P being over-aggressive.
 
-KP = 0.8
+KP = 0.4
 KI = 0.15
 
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
-KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
+KP_INTERP = [125, 60, 32.5, 15, 5.75, 2.75, 1.75, 1.0, KP]
 
 LP_FILTER_CUTOFF_HZ = 1.2
 MEASUREMENT_LP_CUTOFF_HZ = 1.8
