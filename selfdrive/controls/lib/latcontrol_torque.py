@@ -23,7 +23,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext import La
 # to be overcome to move it at all, this is compensated for too.
 
 KP = 0.4
-KI = 0.15
+KI = 0.075
 
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP = [125, 60, 32.5, 15, 5.75, 2.75, 1.75, 1.0, KP]
