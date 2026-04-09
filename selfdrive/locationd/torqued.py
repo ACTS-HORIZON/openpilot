@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+3000#!/usr/bin/env python3
 import os
 import numpy as np
 from collections import deque, defaultdict
@@ -28,7 +28,7 @@ FRICTION_SANITY = 0.5
 FRICTION_SANITY_QLOG = 0.8
 STEER_MIN_THRESHOLD = 0.02
 MIN_FILTER_DECAY = 50
-MAX_FILTER_DECAY = 3000
+MAX_FILTER_DECAY = 10000
 LAT_ACC_THRESHOLD = 1
 STEER_BUCKET_BOUNDS = [(-0.5, -0.3), (-0.3, -0.2), (-0.2, -0.1), (-0.1, 0), (0, 0.1), (0.1, 0.2), (0.2, 0.3), (0.3, 0.5)]
 MIN_BUCKET_POINTS = np.array([100, 300, 500, 500, 500, 500, 300, 100])
