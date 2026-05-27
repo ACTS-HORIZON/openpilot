@@ -9,15 +9,9 @@ CAR_ROTATION_RADIUS = 0.0
 MAX_CURVATURE = 0.2
 MAX_VEL_ERR = 5.0  # m/s
 
-# EU guidelines (highway comfort limits)
+# EU guidelines
 MAX_LATERAL_JERK = 5.0  # m/s^3
 MAX_LATERAL_ACCEL_NO_ROLL = 3.0  # m/s^2
-
-# Speed-dependent limits: EU highway values are too conservative for low-speed urban turns.
-# At urban speeds the absolute acceleration changes are smaller, so higher rates are acceptable.
-_LAT_LIMIT_BP = [MIN_SPEED, 5.0, 11.0, 20.0]   # m/s (~2, 11, 25, 45 mph)
-_LAT_JERK_V   = [9.0, 8.0, 5.5, MAX_LATERAL_JERK]        # m/s^3
-_LAT_ACCEL_V  = [5.0, 5.0, 3.5, MAX_LATERAL_ACCEL_NO_ROLL]  # m/s^2
 
 
 def clamp(val, min_val, max_val):
@@ -29,20 +23,16 @@ def smooth_value(val, prev_val, tau, dt=DT_MDL):
   return alpha * val + (1 - alpha) * prev_val
 
 def clip_curvature(v_ego, prev_curvature, new_curvature, roll) -> tuple[float, bool]:
-  # This function respects ISO lateral jerk and acceleration limits + a max curvature.
-  # Limits are relaxed at urban speeds where the EU highway comfort values prevent the
-  # controller from tracking sharp turns (e.g. 90-degree intersections at 15-20 mph).
+  # This function respects ISO lateral jerk and acceleration limits + a max curvature
   v_ego = max(v_ego, MIN_SPEED)
-  max_lat_jerk = float(np.interp(v_ego, _LAT_LIMIT_BP, _LAT_JERK_V))
-  max_curvature_rate = max_lat_jerk / (v_ego ** 2)  # inexact calculation, check https://github.com/commaai/openpilot/pull/24755
+  max_curvature_rate = MAX_LATERAL_JERK / (v_ego ** 2)  # inexact calculation, check https://github.com/commaai/openpilot/pull/24755
   new_curvature = np.clip(new_curvature,
                           prev_curvature - max_curvature_rate * DT_CTRL,
                           prev_curvature + max_curvature_rate * DT_CTRL)
 
   roll_compensation = roll * ACCELERATION_DUE_TO_GRAVITY
-  max_lat_accel_no_roll = float(np.interp(v_ego, _LAT_LIMIT_BP, _LAT_ACCEL_V))
-  max_lat_accel = max_lat_accel_no_roll + roll_compensation
-  min_lat_accel = -max_lat_accel_no_roll + roll_compensation
+  max_lat_accel = MAX_LATERAL_ACCEL_NO_ROLL + roll_compensation
+  min_lat_accel = -MAX_LATERAL_ACCEL_NO_ROLL + roll_compensation
   new_curvature, limited_accel = clamp(new_curvature, min_lat_accel / v_ego ** 2, max_lat_accel / v_ego ** 2)
 
   new_curvature, limited_max_curv = clamp(new_curvature, -MAX_CURVATURE, MAX_CURVATURE)
