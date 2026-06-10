@@ -50,6 +50,8 @@ class Controls(ControlsExt):
     self.steer_limited_by_safety = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
+    self.left_lane_visible = False
+    self.right_lane_visible = False
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -182,10 +184,16 @@ class Controls(ControlsExt):
     hudControl.leadDistanceBars = self.sm['selfdriveState'].personality.raw + 1
     hudControl.visualAlert = self.sm['selfdriveState'].alertHudVisual
 
-    # cluster lane display reflects what the model actually sees (drives ccIC LKA_RcgSta)
+    # cluster lane display reflects the model, with hysteresis to stop flicker (drives ccIC LKA_RcgSta)
     lane_probs = self.sm['modelV2'].laneLineProbs
-    hudControl.leftLaneVisible = len(lane_probs) > 1 and lane_probs[1] > 0.5
-    hudControl.rightLaneVisible = len(lane_probs) > 2 and lane_probs[2] > 0.5
+    LANE_ON, LANE_OFF = 0.6, 0.3
+    if len(lane_probs) > 2:
+      if lane_probs[1] > LANE_ON: self.left_lane_visible = True
+      elif lane_probs[1] < LANE_OFF: self.left_lane_visible = False
+      if lane_probs[2] > LANE_ON: self.right_lane_visible = True
+      elif lane_probs[2] < LANE_OFF: self.right_lane_visible = False
+    hudControl.leftLaneVisible = self.left_lane_visible
+    hudControl.rightLaneVisible = self.right_lane_visible
     if self.sm.valid['driverAssistance']:
       hudControl.leftLaneDepart = self.sm['driverAssistance'].leftLaneDeparture
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
