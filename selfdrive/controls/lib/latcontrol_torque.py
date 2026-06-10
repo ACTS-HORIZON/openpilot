@@ -22,17 +22,17 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext import La
 # Additionally, there is friction in the steering wheel that needs
 # to be overcome to move it at all, this is compensated for too.
 
-KP = 0.8
-KI = 0.15
+KP = 0.6
+KI = 0.35
 
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
 
 LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
-JERK_GAIN = 0.3
+JERK_GAIN = 0.22
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
-VERSION = 1
+VERSION = 2
 
 class LatControlTorque(LatControl):
   def __init__(self, CP, CP_SP, CI, dt):
