@@ -182,8 +182,10 @@ class Controls(ControlsExt):
     hudControl.leadDistanceBars = self.sm['selfdriveState'].personality.raw + 1
     hudControl.visualAlert = self.sm['selfdriveState'].alertHudVisual
 
-    hudControl.rightLaneVisible = True
-    hudControl.leftLaneVisible = True
+    # cluster lane display reflects what the model actually sees (drives ccIC LKA_RcgSta)
+    lane_probs = self.sm['modelV2'].laneLineProbs
+    hudControl.leftLaneVisible = len(lane_probs) > 1 and lane_probs[1] > 0.5
+    hudControl.rightLaneVisible = len(lane_probs) > 2 and lane_probs[2] > 0.5
     if self.sm.valid['driverAssistance']:
       hudControl.leftLaneDepart = self.sm['driverAssistance'].leftLaneDeparture
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
