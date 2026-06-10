@@ -186,7 +186,7 @@ class Controls(ControlsExt):
 
     # cluster lane display reflects the model, with hysteresis to stop flicker (drives ccIC LKA_RcgSta)
     lane_probs = self.sm['modelV2'].laneLineProbs
-    LANE_ON, LANE_OFF = 0.6, 0.3
+    LANE_ON, LANE_OFF = 0.75, 0.35
     if len(lane_probs) > 2:
       if lane_probs[1] > LANE_ON: self.left_lane_visible = True
       elif lane_probs[1] < LANE_OFF: self.left_lane_visible = False
