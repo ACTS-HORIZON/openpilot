@@ -198,6 +198,11 @@ class Controls(ControlsExt):
       hudControl.leftLaneDepart = self.sm['driverAssistance'].leftLaneDeparture
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
 
+    # cluster speed limit sign mirrors the sunnypilot SLA sign on the comma (drives ccIC ISLW_SpdCluMainDis)
+    resolver = self.sm['longitudinalPlanSP'].speedLimit.resolver
+    has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
+    hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
+
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
       if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
