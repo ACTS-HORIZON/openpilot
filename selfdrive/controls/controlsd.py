@@ -2,7 +2,7 @@
 import math
 from numbers import Number
 
-from cereal import car, log
+from cereal import car, custom, log
 import cereal.messaging as messaging
 from openpilot.common.constants import CV
 from openpilot.common.params import Params
@@ -25,6 +25,10 @@ from openpilot.sunnypilot.selfdrive.controls.controlsd_ext import ControlsExt
 State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
+AssistState = custom.LongitudinalPlanSP.SpeedLimit.AssistState
+SpeedLimitPrompt = car.CarControl.HUDControl.SpeedLimitPrompt
+
+SLA_PROMPT_HOLD_FRAMES = int(4. / DT_CTRL)  # show "speed has changed" popup for 4s after the set speed updates
 
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
@@ -52,6 +56,9 @@ class Controls(ControlsExt):
     self.desired_curvature = 0.0
     self.left_lane_visible = False
     self.right_lane_visible = False
+    self.sla_pending_prev = False
+    self.sla_limit_last_prev = 0.0
+    self.sla_prompt_frames = 0
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -202,6 +209,25 @@ class Controls(ControlsExt):
     resolver = self.sm['longitudinalPlanSP'].speedLimit.resolver
     has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
     hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
+
+    # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA_Popup):
+    # "will change" while a new limit awaits confirmation/adoption, "has changed" briefly once adopted
+    assist_state = self.sm['longitudinalPlanSP'].speedLimit.assist.state
+    limit_last = float(resolver.speedLimitFinalLast)
+    if assist_state == AssistState.pending:
+      hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
+      self.sla_prompt_frames = 0
+    elif assist_state in (AssistState.adapting, AssistState.active):
+      limit_changed = self.sla_limit_last_prev != 0.0 and limit_last != self.sla_limit_last_prev
+      if self.sla_pending_prev or limit_changed:
+        self.sla_prompt_frames = SLA_PROMPT_HOLD_FRAMES
+      if self.sla_prompt_frames > 0:
+        self.sla_prompt_frames -= 1
+        hudControl.speedLimitPrompt = SpeedLimitPrompt.hasChanged
+    else:
+      self.sla_prompt_frames = 0
+    self.sla_pending_prev = assist_state == AssistState.pending
+    self.sla_limit_last_prev = limit_last
 
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
