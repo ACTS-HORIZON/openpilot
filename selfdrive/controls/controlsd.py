@@ -2,7 +2,7 @@
 import math
 from numbers import Number
 
-from cereal import car, log
+from cereal import car, custom, log
 import cereal.messaging as messaging
 from openpilot.common.constants import CV
 from openpilot.common.params import Params
@@ -25,6 +25,10 @@ from openpilot.sunnypilot.selfdrive.controls.controlsd_ext import ControlsExt
 State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
+AssistState = custom.LongitudinalPlanSP.SpeedLimit.AssistState
+SpeedLimitPrompt = car.CarControl.HUDControl.SpeedLimitPrompt
+
+SLA_PROMPT_HOLD_FRAMES = int(4. / DT_CTRL)  # show "speed has changed" popup for 4s after the set speed updates
 
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
@@ -52,6 +56,8 @@ class Controls(ControlsExt):
     self.desired_curvature = 0.0
     self.left_lane_visible = False
     self.right_lane_visible = False
+    self.sla_state_prev = AssistState.disabled
+    self.sla_prompt_frames = 0
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -197,6 +203,29 @@ class Controls(ControlsExt):
     if self.sm.valid['driverAssistance']:
       hudControl.leftLaneDepart = self.sm['driverAssistance'].leftLaneDeparture
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
+
+    # cluster speed limit sign mirrors the sunnypilot SLA sign on the comma (drives ccIC ISLW_SpdCluMainDis)
+    resolver = self.sm['longitudinalPlanSP'].speedLimit.resolver
+    has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
+    hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
+
+    # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA arrow + popup):
+    # preActive = a new limit is detected and waiting to be applied (flashing arrow), and the
+    # preActive -> active/adapting transition = the set speed just changed (popup, held 4s). both the
+    # manual-confirm and auto-apply paths go through preActive, so keying off the transition covers both
+    assist_state = self.sm['longitudinalPlanSP'].speedLimit.assist.state
+    if assist_state == AssistState.preActive:
+      hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
+      self.sla_prompt_frames = 0
+    elif assist_state in (AssistState.adapting, AssistState.active):
+      if self.sla_state_prev == AssistState.preActive:
+        self.sla_prompt_frames = SLA_PROMPT_HOLD_FRAMES
+      if self.sla_prompt_frames > 0:
+        self.sla_prompt_frames -= 1
+        hudControl.speedLimitPrompt = SpeedLimitPrompt.hasChanged
+    else:
+      self.sla_prompt_frames = 0
+    self.sla_state_prev = assist_state
 
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
