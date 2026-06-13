@@ -7,6 +7,7 @@ from opendbc.car.lateral import FRICTION_THRESHOLD, get_friction
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
+from openpilot.selfdrive.controls.lib.drive_helpers import MIN_SPEED
 from openpilot.common.pid import PIDController
 
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_ext import LatControlTorqueExt
@@ -32,6 +33,16 @@ LP_FILTER_CUTOFF_HZ = 1.2
 JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.22
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
+
+# Low-speed lateral authority. This controller corrects error in lateral-acceleration
+# space (everything scaled by v**2), so below ~20 mph a real curvature error collapses to
+# a near-zero lat-accel error and produces almost no torque -> the low-speed "dead" feel.
+# LOW_SPEED_* boosts the error gain as speed drops, normalized by the live KP so it adds
+# authority without fighting the KP_INTERP schedule (high speed is left ~untouched: ~+5%
+# at 30 m/s, ~+31% at 10 m/s, ~+49% at 3 m/s with these values).
+LOW_SPEED_X = [0, 10, 20, 30]   # m/s
+LOW_SPEED_Y = [12, 10.5, 8, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
+
 VERSION = 2
 
 class LatControlTorque(LatControl):
@@ -94,8 +105,15 @@ class LatControlTorque(LatControl):
       output_torque = 0.0
       pid_log.active = False
     else:
+      # Boost low-speed authority without touching the FF/friction path: scale the error fed
+      # to the PID up as speed drops, normalized by the active KP. friction above still sees
+      # the raw error (intentional -- avoids double-counting the low-speed term).
+      low_speed_factor = (np.interp(CS.vEgo, LOW_SPEED_X, LOW_SPEED_Y) / max(CS.vEgo, MIN_SPEED)) ** 2
+      current_kp = np.interp(CS.vEgo, self.pid._k_p[0], self.pid._k_p[1])
+      error_low_speed = error * (1.0 + low_speed_factor / max(current_kp, 1e-3))
+
       # do error correction in lateral acceleration space, convert at end to handle non-linear torque responses correctly
-      pid_log.error = float(error)
+      pid_log.error = float(error_low_speed)
 
       freeze_integrator = steer_limited_by_safety or CS.steeringPressed or CS.vEgo < 5
       output_lataccel = self.pid.update(pid_log.error, speed=CS.vEgo, feedforward=ff, freeze_integrator=freeze_integrator)
