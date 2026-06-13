@@ -33,6 +33,9 @@ class LatControlTorqueExt(NeuralNetworkLateralControl, LatControlTorqueExtOverri
     self._output_torque = output_torque
 
     self.update_calculations(CS, VM, desired_lateral_accel)
-    self.update_neural_network_feedforward(CS, params, calibrated_pose)
+    if self._nnlc_enabled:
+      self.update_neural_network_feedforward(CS, params, calibrated_pose)
+    elif self._nnff_lite_active:
+      self.update_nnff_lite_feedforward(CS)
 
     return self._pid_log, self._output_torque

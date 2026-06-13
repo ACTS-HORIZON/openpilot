@@ -9,8 +9,6 @@ import math
 import numpy as np
 
 from opendbc.car.lateral import FRICTION_THRESHOLD, get_friction
-from opendbc.sunnypilot.car.interfaces import LatControlInputs
-from opendbc.sunnypilot.car.lateral_ext import get_friction as get_friction_in_torque_space
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.params import Params
 from openpilot.selfdrive.modeld.constants import ModelConstants
@@ -72,24 +70,6 @@ class NeuralNetworkLateralControl(LatControlTorqueExtBase):
   def update_lateral_lag(self, lag):
     super().update_lateral_lag(lag)
     self.nn_future_times = [t + self.desired_lat_jerk_time for t in self.future_times]
-
-  def update_feedforward_torque_space(self, CS):
-    torque_from_setpoint = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._setpoint, self._roll_compensation, CS.vEgo, CS.aEgo),
-                                                                          self.torque_params, gravity_adjusted=False)
-    torque_from_measurement = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._measurement, self._roll_compensation, CS.vEgo, CS.aEgo),
-                                                                             self.torque_params, gravity_adjusted=False)
-    self._pid_log.error = float(torque_from_setpoint - torque_from_measurement)
-    self._ff = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._gravity_adjusted_lateral_accel, self._roll_compensation,
-                                                                               CS.vEgo, CS.aEgo), self.torque_params, gravity_adjusted=True)
-    self._ff += get_friction_in_torque_space(self._desired_lateral_accel - self._actual_lateral_accel, self._lateral_accel_deadzone,
-                                             FRICTION_THRESHOLD, self.torque_params)
-
-  def update_output_torque(self, CS):
-    freeze_integrator = self._steer_limited_by_safety or CS.steeringPressed or CS.vEgo < 5
-    self._output_torque = self._pid.update(self._pid_log.error,
-                                           feedforward=self._ff,
-                                           speed=CS.vEgo,
-                                           freeze_integrator=freeze_integrator)
 
   def update_neural_network_feedforward(self, CS, params, calibrated_pose) -> None:
     if not self._nnlc_enabled:

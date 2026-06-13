@@ -7,9 +7,13 @@ See the LICENSE.md file in the root directory for more details.
 import math
 import numpy as np
 
+from openpilot.common.params import Params
 from openpilot.common.pid import PIDController
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N
 from openpilot.selfdrive.modeld.constants import ModelConstants
+from opendbc.car.lateral import FRICTION_THRESHOLD
+from opendbc.sunnypilot.car.interfaces import LatControlInputs
+from opendbc.sunnypilot.car.lateral_ext import get_friction as get_friction_in_torque_space
 
 LAT_PLAN_MIN_IDX = 5
 LATERAL_LAG_MOD = 0.0  # seconds, modifies how far in the future we look ahead for the lateral plan
@@ -51,6 +55,9 @@ class LatControlTorqueExtBase:
     self.model_v2 = None
     self.model_valid = False
     self.lac_torque = lac_torque
+
+    self.params = Params()
+    self.nnff_lite_enabled = self.params.get_bool("NNFFLite")
 
     self.actual_lateral_jerk: float = 0.0
     self.lateral_jerk_setpoint: float = 0.0
@@ -132,3 +139,36 @@ class LatControlTorqueExtBase:
         self.lat_accel_friction_factor = 1.0
       self.lateral_jerk_setpoint = self.lat_jerk_friction_factor * self.lookahead_lateral_jerk
       self.lateral_jerk_measurement = self.lat_jerk_friction_factor * self.actual_lateral_jerk
+
+  @property
+  def _nnff_lite_active(self):
+    return self.nnff_lite_enabled and self.model_valid
+
+  def update_feedforward_torque_space(self, CS):
+    torque_from_setpoint = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._setpoint, self._roll_compensation, CS.vEgo, CS.aEgo),
+                                                                          self.torque_params, gravity_adjusted=False)
+    torque_from_measurement = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._measurement, self._roll_compensation, CS.vEgo, CS.aEgo),
+                                                                             self.torque_params, gravity_adjusted=False)
+    self._pid_log.error = float(torque_from_setpoint - torque_from_measurement)
+    self._ff = self.torque_from_lateral_accel_in_torque_space(LatControlInputs(self._gravity_adjusted_lateral_accel, self._roll_compensation,
+                                                                               CS.vEgo, CS.aEgo), self.torque_params, gravity_adjusted=True)
+    self._ff += get_friction_in_torque_space(self._desired_lateral_accel - self._actual_lateral_accel, self._lateral_accel_deadzone,
+                                             FRICTION_THRESHOLD, self.torque_params)
+
+  def update_output_torque(self, CS):
+    freeze_integrator = self._steer_limited_by_safety or CS.steeringPressed or CS.vEgo < 5
+    self._output_torque = self._pid.update(self._pid_log.error,
+                                           feedforward=self._ff,
+                                           speed=CS.vEgo,
+                                           freeze_integrator=freeze_integrator)
+
+  def update_nnff_lite_feedforward(self, CS):
+    self.update_feedforward_torque_space(CS)
+
+    jerk_accel = self.lat_jerk_friction_factor * self.lookahead_lateral_jerk
+    jerk_torque = self.torque_from_lateral_accel_in_torque_space(
+        LatControlInputs(jerk_accel, self._roll_compensation, CS.vEgo, CS.aEgo),
+        self.torque_params, gravity_adjusted=False)
+    self._ff += jerk_torque
+
+    self.update_output_torque(CS)
