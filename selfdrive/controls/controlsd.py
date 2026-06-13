@@ -56,8 +56,7 @@ class Controls(ControlsExt):
     self.desired_curvature = 0.0
     self.left_lane_visible = False
     self.right_lane_visible = False
-    self.sla_pending_prev = False
-    self.sla_limit_last_prev = 0.0
+    self.sla_state_prev = AssistState.disabled
     self.sla_prompt_frames = 0
 
     self.pose_calibrator = PoseCalibrator()
@@ -210,24 +209,23 @@ class Controls(ControlsExt):
     has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
     hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
 
-    # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA_Popup):
-    # "will change" while a new limit awaits confirmation/adoption, "has changed" briefly once adopted
+    # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA arrow + popup):
+    # preActive = a new limit is detected and waiting to be applied (flashing arrow), and the
+    # preActive -> active/adapting transition = the set speed just changed (popup, held 4s). both the
+    # manual-confirm and auto-apply paths go through preActive, so keying off the transition covers both
     assist_state = self.sm['longitudinalPlanSP'].speedLimit.assist.state
-    limit_last = float(resolver.speedLimitFinalLast)
-    if assist_state == AssistState.pending:
+    if assist_state == AssistState.preActive:
       hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
       self.sla_prompt_frames = 0
     elif assist_state in (AssistState.adapting, AssistState.active):
-      limit_changed = self.sla_limit_last_prev != 0.0 and limit_last != self.sla_limit_last_prev
-      if self.sla_pending_prev or limit_changed:
+      if self.sla_state_prev == AssistState.preActive:
         self.sla_prompt_frames = SLA_PROMPT_HOLD_FRAMES
       if self.sla_prompt_frames > 0:
         self.sla_prompt_frames -= 1
         hudControl.speedLimitPrompt = SpeedLimitPrompt.hasChanged
     else:
       self.sla_prompt_frames = 0
-    self.sla_pending_prev = assist_state == AssistState.pending
-    self.sla_limit_last_prev = limit_last
+    self.sla_state_prev = assist_state
 
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
