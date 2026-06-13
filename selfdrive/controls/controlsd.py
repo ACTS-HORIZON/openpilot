@@ -205,15 +205,18 @@ class Controls(ControlsExt):
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
 
     # cluster speed limit sign mirrors the sunnypilot SLA sign on the comma (drives ccIC ISLW_SpdCluMainDis)
-    resolver = self.sm['longitudinalPlanSP'].speedLimit.resolver
+    speed_limit = self.sm['longitudinalPlanSP'].speedLimit
+    resolver = speed_limit.resolver
     has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
     hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
+    # set speed turns green on the cluster while SLA is actively managing it, mirroring the comma screen
+    hudControl.speedLimitActive = speed_limit.assist.active
 
     # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA arrow + popup):
     # preActive = a new limit is detected and waiting to be applied (flashing arrow), and the
     # preActive -> active/adapting transition = the set speed just changed (popup, held 4s). both the
     # manual-confirm and auto-apply paths go through preActive, so keying off the transition covers both
-    assist_state = self.sm['longitudinalPlanSP'].speedLimit.assist.state
+    assist_state = speed_limit.assist.state
     if assist_state == AssistState.preActive:
       hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
       self.sla_prompt_frames = 0
