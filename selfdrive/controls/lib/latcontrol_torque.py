@@ -43,6 +43,21 @@ LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 LOW_SPEED_X = [0, 10, 20, 30]   # m/s
 LOW_SPEED_Y = [12, 10.5, 8, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
 
+# Unwind taper. The curvature feedforward is symmetric for turn-in and turn-out, but the
+# EPS self-centering torque fights you on the way in and helps you on the way out. Below
+# highway speed that asymmetry shows up as a jerky or late release at curve exit (dump the
+# wheel, or hold the turn too long and drift wide). Detect the unwind phase from the sign of
+# accel*jerk and gently taper the curvature FF so torque walks back instead of dumping/holding.
+# Speed-scaled to vanish by highway speed (preserves the 50+ feel) and jerk-gated so it only
+# acts during real maneuvers, not sensor noise. Conservative starts for the GV60 Performance AWD.
+UNWIND_PHASE_SCALE = 4.0          # tanh softness of the turn-in/unwind detector; lower = sharper
+UNWIND_TAPER_LEFT  = 0.30         # fraction of curvature FF removed during LEFT-turn unwind
+UNWIND_TAPER_RIGHT = 0.30         # right; raise whichever side drifts/jerks worse on exit
+UNWIND_TAPER_FLOOR = 0.55         # never remove more than (1-floor) of the FF -- safety clamp
+UNWIND_SPEED_X = [8.0, 22.0]      # m/s: full effect <=~18 mph, off by ~50 mph
+UNWIND_SPEED_Y = [1.0, 0.0]
+UNWIND_JERK_RISE = 1.5            # lat-jerk (m/s^3) to fully engage; gates out noise
+
 VERSION = 2
 
 class LatControlTorque(LatControl):
@@ -95,7 +110,19 @@ class LatControlTorque(LatControl):
     lookahead_idx = int(np.clip(-delay_frames + self.lookahead_frames, -self.lat_accel_request_buffer_len+1, -2))
     raw_lateral_jerk = (self.lat_accel_request_buffer[lookahead_idx+1] - self.lat_accel_request_buffer[lookahead_idx-1]) / (2 * self.dt)
     desired_lateral_jerk = self.jerk_filter.update(raw_lateral_jerk)
-    gravity_adjusted_future_lateral_accel = future_desired_lateral_accel - roll_compensation
+
+    # Unwind taper: phase>0 = turning in (accel & jerk same sign), phase<0 = unwinding.
+    # Taper the curvature FF down during unwind so the wheel walks back instead of dumping or
+    # holding. Speed- and jerk-gated; roll/offset comp and friction are left at full authority.
+    phase = math.tanh((setpoint * desired_lateral_jerk) / UNWIND_PHASE_SCALE)
+    unwind_weight = max(-phase, 0.0)
+    unwind_speed = np.interp(CS.vEgo, UNWIND_SPEED_X, UNWIND_SPEED_Y)
+    unwind_jerk = 1.0 - math.exp(-abs(desired_lateral_jerk) / UNWIND_JERK_RISE)
+    unwind_side = UNWIND_TAPER_LEFT if setpoint >= 0.0 else UNWIND_TAPER_RIGHT
+    unwind_taper = float(np.clip(1.0 - unwind_side * unwind_weight * unwind_speed * unwind_jerk,
+                                 UNWIND_TAPER_FLOOR, 1.0))
+
+    gravity_adjusted_future_lateral_accel = (future_desired_lateral_accel * unwind_taper) - roll_compensation
     ff = gravity_adjusted_future_lateral_accel
     # latAccelOffset corrects roll compensation bias from device roll misalignment relative to car roll
     ff -= self.torque_params.latAccelOffset
