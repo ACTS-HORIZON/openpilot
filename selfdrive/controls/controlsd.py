@@ -58,6 +58,8 @@ class Controls(ControlsExt):
     self.right_lane_visible = False
     self.sla_state_prev = AssistState.disabled
     self.sla_prompt_frames = 0
+    self.sla_auto_frames = 0
+    self.sla_limit_prev = 0
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -213,22 +215,33 @@ class Controls(ControlsExt):
     hudControl.speedLimitActive = speed_limit.assist.active
 
     # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA arrow + popup):
-    # preActive = a new limit is detected and waiting to be applied (flashing arrow), and the
-    # preActive -> active/adapting transition = the set speed just changed (popup, held 4s). both the
-    # manual-confirm and auto-apply paths go through preActive, so keying off the transition covers both
+    # - preActive = a below-threshold limit awaiting confirmation -> flashing arrow ("willChange"),
+    #   and the preActive -> active/adapting transition once confirmed -> "hasChanged" popup (4s).
+    # - an above-threshold limit auto-applies WITHOUT entering preActive (it just changes while active),
+    #   so detect it by the limit value changing while managing -> "willAutoChange" (auto-adjusting, 4s).
     assist_state = speed_limit.assist.state
+    limit_now = round(float(resolver.speedLimitLast)) if has_limit else 0
     if assist_state == AssistState.preActive:
       hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
       self.sla_prompt_frames = 0
+      self.sla_auto_frames = 0
     elif assist_state in (AssistState.adapting, AssistState.active):
       if self.sla_state_prev == AssistState.preActive:
         self.sla_prompt_frames = SLA_PROMPT_HOLD_FRAMES
+      elif limit_now > 0 and self.sla_limit_prev > 0 and limit_now != self.sla_limit_prev:
+        self.sla_auto_frames = SLA_PROMPT_HOLD_FRAMES
       if self.sla_prompt_frames > 0:
         self.sla_prompt_frames -= 1
         hudControl.speedLimitPrompt = SpeedLimitPrompt.hasChanged
+        self.sla_auto_frames = 0
+      elif self.sla_auto_frames > 0:
+        self.sla_auto_frames -= 1
+        hudControl.speedLimitPrompt = SpeedLimitPrompt.willAutoChange
     else:
       self.sla_prompt_frames = 0
+      self.sla_auto_frames = 0
     self.sla_state_prev = assist_state
+    self.sla_limit_prev = limit_now
 
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
