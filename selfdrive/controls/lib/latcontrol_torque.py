@@ -30,7 +30,7 @@ INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
 
 LP_FILTER_CUTOFF_HZ = 1.2
-JERK_LOOKAHEAD_SECONDS = 0.22
+JERK_LOOKAHEAD_SECONDS = 0.19
 JERK_GAIN = 0.22
 LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 
@@ -41,7 +41,7 @@ LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 # authority without fighting the KP_INTERP schedule (high speed is left ~untouched: ~+5%
 # at 30 m/s, ~+31% at 10 m/s, ~+49% at 3 m/s with these values).
 LOW_SPEED_X = [0, 10, 20, 30]   # m/s
-LOW_SPEED_Y = [14, 12.3, 9.4, 5.85]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
+LOW_SPEED_Y = [22, 16, 10, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
 
 VERSION = 2
 
