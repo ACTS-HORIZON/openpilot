@@ -41,7 +41,7 @@ LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 # authority without fighting the KP_INTERP schedule (high speed is left ~untouched: ~+5%
 # at 30 m/s, ~+31% at 10 m/s, ~+49% at 3 m/s with these values).
 LOW_SPEED_X = [0, 10, 20, 30]   # m/s
-LOW_SPEED_Y = [22, 16, 10, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
+LOW_SPEED_Y = [12, 10.5, 8, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
 
 VERSION = 2
 
