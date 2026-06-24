@@ -43,14 +43,6 @@ LAT_ACCEL_REQUEST_BUFFER_SECONDS = 1.0
 LOW_SPEED_X = [0, 10, 20, 30]   # m/s
 LOW_SPEED_Y = [12, 10.5, 8, 5]  # tune UP if still dead <20 mph, DOWN if turn-in goes twitchy
 
-# Static steering friction is roughly speed-invariant in real terms, but the live-tuned
-# frictionCoefficient is fit mostly from higher-speed driving data, so it tends to
-# undercompensate parking-lot/low-speed turns where breakaway friction needs more torque.
-# Boost it below ~20mph and taper back to the tuned baseline by ~25mph so higher-speed
-# stability (which is sensitive to friction overshoot) is left untouched.
-FRICTION_LOW_SPEED_X = [0, 5, 10, 15]  # m/s (~0, 11, 22, 33 mph)
-FRICTION_LOW_SPEED_Y = [1.5, 1.25, 1.0, 1.0]  # multiplier on torque_params.friction
-
 VERSION = 2
 
 class LatControlTorque(LatControl):
@@ -107,11 +99,7 @@ class LatControlTorque(LatControl):
     ff = gravity_adjusted_future_lateral_accel
     # latAccelOffset corrects roll compensation bias from device roll misalignment relative to car roll
     ff -= self.torque_params.latAccelOffset
-    friction_speed_factor = np.interp(CS.vEgo, FRICTION_LOW_SPEED_X, FRICTION_LOW_SPEED_Y)
-    base_friction = self.torque_params.friction
-    self.torque_params.friction = base_friction * friction_speed_factor
     ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, FRICTION_THRESHOLD, self.torque_params)
-    self.torque_params.friction = base_friction
 
     if not active:
       output_torque = 0.0
