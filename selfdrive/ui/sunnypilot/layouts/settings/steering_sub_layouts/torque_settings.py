@@ -119,16 +119,22 @@ class TorqueSettingsLayout(Widget):
     return items
 
   def _get_torque_estimates(self):
-    """Returns (latAccelFactor, friction, latAccelOffset) filtered estimates from torqued, or None if not calibrated."""
+    """Returns torqued's baseline estimates as (factor, friction, offset), where each entry is a
+    float or None if not available.
+
+    Factor/friction come from the *Filtered values, which are only meaningful once torqued is
+    liveValid. The offset has no offline tune and torqued initializes its filtered value to 0.0,
+    so we surface latAccelOffsetRaw (the actual learned estimate) whenever liveValid is false."""
     blob = ui_state.params.get("LiveTorqueParameters")
     if blob is None:
       return None
     try:
       with log.Event.from_bytes(blob) as evt:
         ltp = evt.liveTorqueParameters
-        if not ltp.liveValid:
-          return None
-        return (ltp.latAccelFactorFiltered, ltp.frictionCoefficientFiltered, ltp.latAccelOffsetFiltered)
+        if ltp.liveValid:
+          return (ltp.latAccelFactorFiltered, ltp.frictionCoefficientFiltered, ltp.latAccelOffsetFiltered)
+        # Not liveValid yet: factor/friction filtered aren't meaningful, but the raw offset estimate is.
+        return (None, None, ltp.latAccelOffsetRaw)
     except Exception:
       return None
 
@@ -157,17 +163,15 @@ class TorqueSettingsLayout(Widget):
     self._torque_friction.set_title(lambda: tr("Friction") + " (" + title_text + ")")
     self._torque_lat_accel_offset.set_title(lambda: tr("Lateral Acceleration Offset") + " (" + tr("Real-Time Only") + ")")
 
-    estimates = self._get_torque_estimates()
-    if estimates is None:
-      not_cal = tr("Estimated: not calibrated yet")
-      self._torque_lat_accel_factor.set_description(not_cal)
-      self._torque_friction.set_description(not_cal)
-      self._torque_lat_accel_offset.set_description(not_cal)
-    else:
-      factor, friction, offset = estimates
-      self._torque_lat_accel_factor.set_description(f"{tr('Estimated')}: {factor:.2f} m/s^2")
-      self._torque_friction.set_description(f"{tr('Estimated')}: {friction:.2f}")
-      self._torque_lat_accel_offset.set_description(f"{tr('Estimated')}: {offset:.2f} m/s^2")
+    estimates = self._get_torque_estimates() or (None, None, None)
+    factor, friction, offset = estimates
+    not_cal = tr("Estimated: not calibrated yet")
+    self._torque_lat_accel_factor.set_description(
+      f"{tr('Estimated')}: {factor:.2f} m/s^2" if factor is not None else not_cal)
+    self._torque_friction.set_description(
+      f"{tr('Estimated')}: {friction:.2f}" if friction is not None else not_cal)
+    self._torque_lat_accel_offset.set_description(
+      f"{tr('Estimated')}: {offset:.2f} m/s^2" if offset is not None else not_cal)
     self._torque_control_versions.action_item.set_value(self._get_current_torque_version_label())
 
   def _render(self, rect):
