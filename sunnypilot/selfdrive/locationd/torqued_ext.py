@@ -63,7 +63,7 @@ class TorqueEstimatorExt:
       "latAccelOffsetRawAvg": float(np.mean(self.raw_offset_window)),
       "samples": len(self.raw_factor_window),
     }
-    self._params.put(RAW_AVG_PARAM, json.dumps(data))
+    self._params.put(RAW_AVG_PARAM, json.dumps(data).encode())
 
   def initialize_custom_params(self, decimated=False):
     self.update_use_params()
