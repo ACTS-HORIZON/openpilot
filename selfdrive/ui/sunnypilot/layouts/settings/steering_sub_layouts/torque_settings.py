@@ -118,25 +118,36 @@ class TorqueSettingsLayout(Widget):
     ]
     return items
 
+  def _get_raw_average(self):
+    """Returns torqued's ~1-minute averaged raw estimates as (factor, friction, offset), or None."""
+    blob = ui_state.params.get("LiveTorqueParametersRawAvg")
+    if blob is None:
+      return None
+    try:
+      data = json.loads(blob)
+      return (data["latAccelFactorRawAvg"], data["frictionCoefficientRawAvg"], data["latAccelOffsetRawAvg"])
+    except Exception:
+      return None
+
   def _get_torque_estimates(self):
     """Returns torqued's baseline estimates as (factor, friction, offset), where each entry is a
     float or None if not available.
 
-    Factor/friction come from the *Filtered values, which are only meaningful once torqued is
-    liveValid. The offset has no offline tune and torqued initializes its filtered value to 0.0,
-    so we surface latAccelOffsetRaw (the actual learned estimate) whenever liveValid is false."""
+    Once torqued is liveValid we surface the *Filtered values. Before then, the filtered values
+    aren't meaningful (and the offset filter is pinned at its 0.0 init), so we fall back to the
+    ~1-minute average of the raw estimates that torqued caches."""
     blob = ui_state.params.get("LiveTorqueParameters")
     if blob is None:
-      return None
+      return self._get_raw_average() or (None, None, None)
     try:
       with log.Event.from_bytes(blob) as evt:
         ltp = evt.liveTorqueParameters
         if ltp.liveValid:
           return (ltp.latAccelFactorFiltered, ltp.frictionCoefficientFiltered, ltp.latAccelOffsetFiltered)
-        # Not liveValid yet: factor/friction filtered aren't meaningful, but the raw offset estimate is.
-        return (None, None, ltp.latAccelOffsetRaw)
     except Exception:
       return None
+    # Not liveValid yet: use the averaged raw estimates as the baseline.
+    return self._get_raw_average() or (None, None, None)
 
   def _update_state(self):
     super()._update_state()

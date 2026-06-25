@@ -273,12 +273,15 @@ def main(demo=False):
 
     # 4Hz driven by livePose
     if sm.frame % 5 == 0:
-      pm.send('liveTorqueParameters', estimator.get_msg(valid=sm.all_checks(), with_points=DEBUG))
+      msg = estimator.get_msg(valid=sm.all_checks(), with_points=DEBUG)
+      pm.send('liveTorqueParameters', msg)
+      estimator.update_raw_average(msg.liveTorqueParameters)
 
     # Cache points every 60 seconds while onroad
     if sm.frame % 240 == 0:
       msg = estimator.get_msg(valid=sm.all_checks(), with_points=True)
       params.put("LiveTorqueParameters", msg.to_bytes())
+      estimator.persist_raw_average()
 
 
 if __name__ == "__main__":
