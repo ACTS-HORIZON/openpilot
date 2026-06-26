@@ -10,6 +10,7 @@ import os
 from collections.abc import Callable
 import pyray as rl
 
+from cereal import log
 from openpilot.common.basedir import BASEDIR
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -94,6 +95,17 @@ class TorqueSettingsLayout(Widget):
       use_float_scaling=True
     )
 
+    self._torque_lat_accel_offset = option_item_sp(
+      title=lambda: tr("Lateral Acceleration Offset"),
+      param="TorqueParamsOverrideLatAccelOffset",
+      description="",
+      min_value=-100,
+      max_value=100,
+      value_change_step=1,
+      label_callback=(lambda x: f"{x/100} m/s^2"),
+      use_float_scaling=True
+    )
+
     items = [
       self._torque_control_versions,
       self._self_tune_toggle,
@@ -102,8 +114,40 @@ class TorqueSettingsLayout(Widget):
       self._torque_prams_override_toggle,
       self._torque_lat_accel_factor,
       self._torque_friction,
+      self._torque_lat_accel_offset,
     ]
     return items
+
+  def _get_raw_average(self):
+    """Returns torqued's ~1-minute averaged raw estimates as (factor, friction, offset), or None."""
+    blob = ui_state.params.get("LiveTorqueParametersRawAvg")
+    if blob is None:
+      return None
+    try:
+      data = json.loads(blob)
+      return (data["latAccelFactorRawAvg"], data["frictionCoefficientRawAvg"], data["latAccelOffsetRawAvg"])
+    except Exception:
+      return None
+
+  def _get_torque_estimates(self):
+    """Returns torqued's baseline estimates as (factor, friction, offset), where each entry is a
+    float or None if not available.
+
+    Once torqued is liveValid we surface the *Filtered values. Before then, the filtered values
+    aren't meaningful (and the offset filter is pinned at its 0.0 init), so we fall back to the
+    ~1-minute average of the raw estimates that torqued caches."""
+    blob = ui_state.params.get("LiveTorqueParameters")
+    if blob is None:
+      return self._get_raw_average() or (None, None, None)
+    try:
+      with log.Event.from_bytes(blob) as evt:
+        ltp = evt.liveTorqueParameters
+        if ltp.liveValid:
+          return (ltp.latAccelFactorFiltered, ltp.frictionCoefficientFiltered, ltp.latAccelOffsetFiltered)
+    except Exception:
+      return None
+    # Not liveValid yet: use the averaged raw estimates as the baseline.
+    return self._get_raw_average() or (None, None, None)
 
   def _update_state(self):
     super()._update_state()
@@ -117,15 +161,28 @@ class TorqueSettingsLayout(Widget):
     self._torque_prams_override_toggle.set_visible(custom_tune_enabled)
     self._torque_lat_accel_factor.set_visible(custom_tune_enabled)
     self._torque_friction.set_visible(custom_tune_enabled)
+    self._torque_lat_accel_offset.set_visible(custom_tune_enabled)
 
     self._torque_prams_override_toggle.action_item.set_enabled(ui_state.is_offroad())
     sliders_enabled = self._torque_prams_override_toggle.action_item.get_state() or ui_state.is_offroad()
     self._torque_lat_accel_factor.action_item.set_enabled(sliders_enabled)
     self._torque_friction.action_item.set_enabled(sliders_enabled)
+    self._torque_lat_accel_offset.action_item.set_enabled(sliders_enabled)
 
     title_text = tr("Real-Time & Offline") if ui_state.params.get("TorqueParamsOverrideEnabled") else tr("Offline Only")
     self._torque_lat_accel_factor.set_title(lambda: tr("Lateral Acceleration Factor") + " (" + title_text + ")")
     self._torque_friction.set_title(lambda: tr("Friction") + " (" + title_text + ")")
+    self._torque_lat_accel_offset.set_title(lambda: tr("Lateral Acceleration Offset") + " (" + tr("Real-Time Only") + ")")
+
+    estimates = self._get_torque_estimates() or (None, None, None)
+    factor, friction, offset = estimates
+    not_cal = tr("Estimated: not calibrated yet")
+    self._torque_lat_accel_factor.set_description(
+      f"{tr('Estimated')}: {factor:.2f} m/s^2" if factor is not None else not_cal)
+    self._torque_friction.set_description(
+      f"{tr('Estimated')}: {friction:.2f}" if friction is not None else not_cal)
+    self._torque_lat_accel_offset.set_description(
+      f"{tr('Estimated')}: {offset:.2f} m/s^2" if offset is not None else not_cal)
     self._torque_control_versions.action_item.set_value(self._get_current_torque_version_label())
 
   def _render(self, rect):

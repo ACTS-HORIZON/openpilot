@@ -449,6 +449,35 @@
                   ]
                 },
                 {
+                  "key": "TorqueParamsOverrideLatAccelOffset",
+                  "widget": "option",
+                  "title": "Lateral Acceleration Offset (Real-Time Only)",
+                  "min": -1.0,
+                  "max": 1.0,
+                  "step": 0.01,
+                  "unit": "m/s²",
+                  "enablement": [
+                    {
+                      "type": "param",
+                      "key": "CustomTorqueParams",
+                      "equals": true
+                    },
+                    {
+                      "type": "any",
+                      "conditions": [
+                        {
+                          "type": "param",
+                          "key": "TorqueParamsOverrideEnabled",
+                          "equals": true
+                        },
+                        {
+                          "type": "offroad_only"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
                   "key": "TorqueControlTune",
                   "widget": "multiple_button",
                   "title": "Torque Control Tune Version",
