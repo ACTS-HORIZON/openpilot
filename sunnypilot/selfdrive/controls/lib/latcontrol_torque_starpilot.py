@@ -36,14 +36,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
   get_starpilot_low_speed_angle_assist_torque,
 )
 
-# ============================================================================
-# Tunable base parameters — dial these on the GV60.
-# These are StarPilot's base multipliers (seeded from his Ioniq 6 entry), applied on top of the car's
-# OWN friction (which comes from values.py + the live tuner).
-# The finer response curves live in latcontrol_vehicle_tunes.py.
-# ============================================================================
 STARPILOT_FF_MASTER_GAIN = 1.0           # global feedforward scale (<1 softens, >1 sharpens)
-STARPILOT_FRICTION_MASTER_GAIN = 1.0     # global friction-response scale
 
 KP = 0.6
 KI = 0.35
@@ -166,7 +159,6 @@ class LatControlTorque(LatControl):
 
       # global tunable dials
       ff *= STARPILOT_FF_MASTER_GAIN
-      friction_scale *= STARPILOT_FRICTION_MASTER_GAIN
 
       ff += friction_scale * get_friction(error_with_lsf + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, friction_threshold, self.torque_params)
 
