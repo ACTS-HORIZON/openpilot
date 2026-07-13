@@ -152,7 +152,7 @@ STARPILOT_HEAVY_DIRECTIONAL_TAPER_UNWIND_RIGHT = 0.0      # neutral (archived 1.
 # -- Low-speed angle assist (get_starpilot_low_speed_angle_assist_torque) --
 # MAX_TORQUE = 0.0 makes each assist path return the input torque unchanged
 # (the |assist| < 1e-4 early-out), so all other parameters in this group are inert.
-STARPILOT_LOW_SPEED_ANGLE_ASSIST_MAX_TORQUE = 0.0         # neutral (archived 0.46)
+STARPILOT_LOW_SPEED_ANGLE_ASSIST_MAX_TORQUE = 0.25         # GV60 conservative (archived 0.46)
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_SPEED = 3.25             # shape, kept
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_SPEED_WIDTH = 0.45       # shape, kept (> 0)
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_ERROR = 1.9              # shape, kept
@@ -164,7 +164,7 @@ STARPILOT_LOW_SPEED_ANGLE_ASSIST_TRACK_RATIO_WIDTH = 0.12   # shape, kept (> 0)
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_TRACK_RATIO_FLOOR = 0.26   # shape, kept
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_ADD_BP = [0.0, 0.35, 0.65, 1.0]   # shape, kept
 STARPILOT_LOW_SPEED_ANGLE_ASSIST_ADD_V = [1.0, 1.0, 0.88, 0.08]    # shape, kept
-STARPILOT_LOW_SPEED_UNWIND_ASSIST_MAX_TORQUE = 0.0        # neutral (archived 0.30)
+STARPILOT_LOW_SPEED_UNWIND_ASSIST_MAX_TORQUE = 0.18        # GV60 conservative (archived 0.30)
 STARPILOT_LOW_SPEED_UNWIND_ASSIST_SPEED = 3.35            # shape, kept
 STARPILOT_LOW_SPEED_UNWIND_ASSIST_SPEED_WIDTH = 0.50      # shape, kept (> 0)
 STARPILOT_LOW_SPEED_UNWIND_ASSIST_ERROR = 1.6             # shape, kept

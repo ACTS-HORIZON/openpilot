@@ -42,7 +42,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # OWN latAccelFactor / friction (which come from values.py + the live tuner).
 # The finer response curves live in latcontrol_vehicle_tunes.py.
 # ============================================================================
-STARPILOT_LAT_ACCEL_FACTOR_MULT = 1.22   # StarPilot base; multiplies the car's own latAccelFactor
+STARPILOT_LAT_ACCEL_FACTOR_MULT = 1.0    # GV60 baseline — no boost over the car's own latAccelFactor
 STARPILOT_FF_MASTER_GAIN = 1.0           # global feedforward scale (<1 softens, >1 sharpens)
 STARPILOT_FRICTION_MASTER_GAIN = 1.0     # global friction-response scale
 
@@ -148,10 +148,11 @@ class LatControlTorque(LatControl):
       measurement_rate = np.clip(measurement_rate, -MAX_LAT_JERK_UP, MAX_LAT_JERK_UP)
       self.previous_measurement = measurement
 
-      low_speed_factor = (np.interp(CS.vEgo, LOW_SPEED_X, LOW_SPEED_Y) / max(CS.vEgo, MIN_SPEED)) ** 2
-      current_kp = np.interp(CS.vEgo, self.pid._k_p[0], self.pid._k_p[1])
+      # low_speed_factor and current_kp kept for reference — multiplier disabled for GV60
+      # low_speed_factor = (np.interp(CS.vEgo, LOW_SPEED_X, LOW_SPEED_Y) / max(CS.vEgo, MIN_SPEED)) ** 2
+      # current_kp = np.interp(CS.vEgo, self.pid._k_p[0], self.pid._k_p[1])
       error = setpoint - measurement
-      error_with_lsf = error * (1 + low_speed_factor / max(current_kp, 1e-3))
+      error_with_lsf = error
 
       # do error correction in lateral acceleration space, convert at end to handle non-linear torque responses correctly
       pid_log.error = float(error_with_lsf)
