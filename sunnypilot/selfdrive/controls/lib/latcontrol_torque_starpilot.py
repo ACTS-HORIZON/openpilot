@@ -39,10 +39,9 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # ============================================================================
 # Tunable base parameters — dial these on the GV60.
 # These are StarPilot's base multipliers (seeded from his Ioniq 6 entry), applied on top of the car's
-# OWN latAccelFactor / friction (which come from values.py + the live tuner).
+# OWN friction (which comes from values.py + the live tuner).
 # The finer response curves live in latcontrol_vehicle_tunes.py.
 # ============================================================================
-STARPILOT_LAT_ACCEL_FACTOR_MULT = 1.0    # GV60 baseline — no boost over the car's own latAccelFactor
 STARPILOT_FF_MASTER_GAIN = 1.0           # global feedforward scale (<1 softens, >1 sharpens)
 STARPILOT_FRICTION_MASTER_GAIN = 1.0     # global friction-response scale
 
@@ -86,7 +85,6 @@ class LatControlTorque(LatControl):
     self.torque_deadzone_boost = float(getattr(self.torque_params, "kfDEPRECATED", 0.0))
 
     # StarPilot base parameter shaping (applied unconditionally for this version)
-    self.torque_params.latAccelFactor *= STARPILOT_LAT_ACCEL_FACTOR_MULT
     self.low_speed_reset_threshold = max(CP.minSteerSpeed, MIN_LATERAL_CONTROL_SPEED)
     self.low_speed_reset_threshold = min(self.low_speed_reset_threshold, STARPILOT_LOW_SPEED_PID_RESET_SPEED)
 
@@ -99,7 +97,6 @@ class LatControlTorque(LatControl):
     self.extension = LatControlTorqueExt(self, CP, CP_SP, CI)
 
   def update_live_torque_params(self, latAccelFactor, latAccelOffset, friction):
-    latAccelFactor *= STARPILOT_LAT_ACCEL_FACTOR_MULT
     self.torque_params.latAccelFactor = latAccelFactor
     self.torque_params.latAccelOffset = latAccelOffset
     self.torque_params.friction = friction
