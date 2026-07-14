@@ -288,3 +288,22 @@ class TestDelayAndSlewLead:
     # left-positive convention: positive curvature -> negative returned torque is
     # possible depending on sign; compare magnitudes of accumulated command
     assert abs(total_on) > abs(total_off)
+
+
+class TestKPRescale:
+  def test_kp_matches_rescale_formula(self):
+    # KP_new(v) = KP_old(v) * k(v) / LAF_REFERENCE (matched torque-loop gain)
+    for v, kp_old, kp_new in zip(gv60.INTERP_SPEEDS, gv60.KP_INTERP_OLD, gv60.KP_INTERP, strict=True):
+      expected = kp_old * k_gain(v) / gv60.LAF_REFERENCE
+      assert kp_new == pytest.approx(expected, rel=0.02)
+
+  def test_torque_loop_gain_matched_at_low_speed(self):
+    # effective torque per unit lat-accel error must match the old controller:
+    # old: KP_old / LAF_REFERENCE, new: KP_new / k(v)
+    for v in [1.0, 2.0, 5.0, 10.0, 30.0]:
+      old_eff = np.interp(v, gv60.INTERP_SPEEDS, gv60.KP_INTERP_OLD) / gv60.LAF_REFERENCE
+      new_eff = np.interp(v, gv60.INTERP_SPEEDS, gv60.KP_INTERP) / k_gain(v)
+      assert new_eff == pytest.approx(old_eff, rel=0.05)
+
+  def test_ki_unchanged(self):
+    assert gv60.KI == 0.35

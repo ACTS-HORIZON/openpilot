@@ -101,15 +101,23 @@ USE_ERROR_FRICTION = False
 # Controller constants
 # =============================================================================
 
+# Gain schedule. The KP values inherited from the StarPilot port
+# ([250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, 0.6]) were tuned against a torque
+# conversion using the learner's scalar latAccelFactor (typically ~3.15 on this
+# car). With the conversion now through the measured k(v) — which is ~1.0 at low
+# speed, ~3x smaller than the scalar — the same lat-accel-space KP would apply
+# ~3x more torque per unit error at low speed. Rescale so the initial
+# TORQUE-loop gain matches today's known-stable behavior:
+#   KP_new(v) = KP_old(v) * k(v) / LAF_REFERENCE
+# Starting point only; plan is to reduce further in road testing. KI unchanged.
+LAF_REFERENCE = 3.15   # learner's typical scalar latAccelFactor (July 2026 routes)
 KP = 0.6
 KI = 0.35
 KD = 0.0
 
-# Gain schedule inherited from the StarPilot port. With the FF now correct at all
-# speeds this is known to be ~3x too hot at low speed; rescaled in a separate,
-# independently revertable commit.
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
-KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
+KP_INTERP_OLD = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]  # StarPilot port, pre-rescale (A/B reference)
+KP_INTERP = [79.4, 38.1, 20.6, 9.5, 3.65, 2.27, 1.83, 1.37, 0.60]
 
 MAX_LAT_JERK_UP = 2.5            # m/s^3
 
@@ -180,7 +188,6 @@ class LatControlTorque(LatControl):
     pipeline can call it; intentionally not implemented in the first commit
     series — the static measured table must be validated on-road first.
     """
-    pass
 
   def set_speed_limits(self, v_ego: float):
     # PID operates in lateral-accel space; the lat accel reachable at full torque
