@@ -18,6 +18,7 @@ from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.selfdrive.controls.lib.blinker_pause_lateral import BlinkerPauseLateral
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_v0 import LatControlTorque as LatControlTorqueV0
 from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_starpilot import LatControlTorque as LatControlTorqueStarpilot
+from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_torque_gv60 import LatControlTorque as LatControlTorqueGV60
 
 
 class ControlsExt(ModelStateBase):
@@ -47,6 +48,8 @@ class ControlsExt(ModelStateBase):
       return LatControlTorqueV0(self.CP, self.CP_SP, CI, dt)
     elif torque_versions == 2.0:  # StarPilot
       return LatControlTorqueStarpilot(self.CP, self.CP_SP, CI, dt)
+    elif torque_versions == 3.0:  # GV60 (measured inverse-EPS FF)
+      return LatControlTorqueGV60(self.CP, self.CP_SP, CI, dt)
     else:
       return lac
 

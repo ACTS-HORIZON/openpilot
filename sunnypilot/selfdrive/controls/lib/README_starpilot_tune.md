@@ -321,3 +321,35 @@ normalized EPS output units (−1…1); angles in degrees at the steering wheel.
 | `STARPILOT_LAT_ACCEL_FACTOR_MULT` | unitless | 1.22 (**active**, Ioniq 6 seed) | Multiplies the car's `latAccelFactor` (incl. live-tuned values): >1 assumes a more effective rack → less feedforward torque per requested lateral accel, PID compensates. Set to 1.0 for a fully neutral baseline. |
 | `STARPILOT_FF_MASTER_GAIN` | unitless | 1.0 (neutral) | Global feedforward scale; <1 softens, >1 sharpens everything. |
 | `STARPILOT_FRICTION_MASTER_GAIN` | unitless | 1.0 (neutral) | Global friction-response scale. |
+
+## GV60 controller (Torque Control Version 3.0, `latcontrol_torque_gv60.py`)
+
+A bespoke controller for the 2023 Genesis GV60 Performance AWD, built around the
+July 2026 rlog regression (81 routes, ~6.3M frames; `laf_from_rlogs.py` +
+`lag_and_viz.py`). It keeps the StarPilot port's phase machinery (delay-compensated
+setpoint buffer, jerk FF + low-pass, derivative-on-measurement damping, integrator
+release decay, unwind detection, low-speed PID reset) and replaces the vehicle model:
+
+- **Torque conversion** — `output_torque = output_lataccel / k(v)` with the measured
+  gain table `LAF_SPEEDS`/`LAF_GAINS` (k ≈ 0.55 + 0.085·v, floored at 1.0 below
+  5 m/s). PID limits track `±steer_max · k(v)` every cycle. The live torque
+  learner's scalar `latAccelFactor` is ignored for conversion (its speed-averaged
+  value is the fiction this controller removes); `latAccelOffset` is still applied
+  live and the learner's friction is logged but not applied.
+- **Friction** — hysteresis-model compensation `±FRICTION_TORQUE ·
+  tanh(d(desired_torque)/dt / rate_scale)` in torque space, from the measured
+  half-width 0.078. The error-based `get_friction` term remains behind
+  `USE_ERROR_FRICTION` for A/B.
+- **Delay** — setpoint buffer indexed with a speed-interpolated delay
+  (`DELAY_SPEEDS`/`DELAY_VALUES`, ~330 ms low speed → ~120 ms highway; pooled
+  ~168 ms), falling back to the live `lat_delay` when disabled. A slew-aware FF
+  lead (`LEAD_S(v) · d(ff_torque)/dt`, ≤10 m/s only, clamped ±0.15) counters the
+  measured amplitude-dependent EPS torque-rate lag; single-constant disable for A/B.
+- **KP rescale** — the inherited low-speed KP schedule is divided by the ratio of
+  old effective gain (`KP_old / 3.15`, the learner's typical latAccelFactor) to the
+  new `KP / k(v)`, so the initial torque-loop gain matches known-stable behavior.
+
+Registered as `"GV60": 3.0` in `latcontrol_torque_versions.json` and dispatched in
+`controlsd_ext.initialize_lateral_control`. Applies unconditionally when selected —
+no fingerprint gate. Commit series is separable for road testing: (a) gain curve +
+limits, (b) friction hysteresis, (c) speed-interp delay + slew lead, (d) KP rescale.
