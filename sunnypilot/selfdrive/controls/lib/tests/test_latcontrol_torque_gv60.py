@@ -242,3 +242,49 @@ class TestFrictionHysteresis:
     for rate in [-1e6, -1.0, 1.0, 1e6]:
       comp = gv60.FRICTION_TORQUE * math.tanh(rate / gv60.FRICTION_RATE_SCALE)
       assert abs(comp) <= gv60.FRICTION_TORQUE + 1e-12
+
+
+class TestDelayAndSlewLead:
+  def test_delay_table_matches_measurements(self):
+    for v, d in [(7.5, 0.33), (12.5, 0.33), (17.5, 0.17), (22.5, 0.125), (27.5, 0.12), (36.5, 0.16)]:
+      assert np.interp(v, gv60.DELAY_SPEEDS, gv60.DELAY_VALUES) == pytest.approx(d)
+
+  def test_speed_interp_delay_used_over_lat_delay(self):
+    # identical inputs except a wildly different live lat_delay must produce
+    # identical outputs when USE_SPEED_INTERP_DELAY is on
+    assert gv60.USE_SPEED_INTERP_DELAY
+    lac_a = make_controller()
+    lac_b = make_controller()
+    out_a = out_b = None
+    for c in np.linspace(0.0, 0.01, 30):
+      out_a, _, _ = run_update(lac_a, v_ego=8.0, desired_curvature=float(c), lat_delay=0.05)
+      out_b, _, _ = run_update(lac_b, v_ego=8.0, desired_curvature=float(c), lat_delay=0.95)
+    assert out_a == pytest.approx(out_b)
+
+  def test_lead_zero_at_high_speed(self):
+    assert np.interp(25.0, gv60.LEAD_SPEEDS, gv60.LEAD_S) == pytest.approx(0.0)
+    assert np.interp(45.0, gv60.LEAD_SPEEDS, gv60.LEAD_S) == pytest.approx(0.0)
+
+  def test_lead_clamped(self):
+    for rate in [-1e6, 1e6]:
+      lead = np.clip(np.interp(5.0, gv60.LEAD_SPEEDS, gv60.LEAD_S) * rate,
+                     -gv60.LEAD_TORQUE_CLAMP, gv60.LEAD_TORQUE_CLAMP)
+      assert abs(lead) <= gv60.LEAD_TORQUE_CLAMP + 1e-12
+
+  def test_lead_adds_phase_at_low_speed(self, monkeypatch):
+    # with the lead on, a low-speed ramp should command more torque during the
+    # transient than with it off (same inputs)
+    def ramp(lac):
+      last = 0.0
+      total = 0.0
+      for c in np.linspace(0.0, 0.03, 40):
+        last, _, _ = run_update(lac, v_ego=6.0, desired_curvature=float(c))
+        total += last
+      return total
+
+    total_on = ramp(make_controller())
+    monkeypatch.setattr(gv60, "SLEW_LEAD_ENABLED", False)
+    total_off = ramp(make_controller())
+    # left-positive convention: positive curvature -> negative returned torque is
+    # possible depending on sign; compare magnitudes of accumulated command
+    assert abs(total_on) > abs(total_off)

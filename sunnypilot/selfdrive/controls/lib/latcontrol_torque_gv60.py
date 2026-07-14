@@ -62,6 +62,26 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 LAF_SPEEDS = [0.0, 5.0, 7.5, 12.5, 17.5, 22.5, 27.5, 36.5, 45.0]
 LAF_GAINS  = [1.0, 1.0, 1.3,  2.0,  2.3,  2.6,  3.0,  3.6,  4.2]
 
+# --- Delay: command -> steering-response, cross-correlation on engaged runs.
+# Measured (v m/s -> s): 7.5 -> ~0.33, 12.5 -> ~0.33, 17.5 -> ~0.17,
+# 22.5 -> ~0.125, 27.5 -> ~0.12, 36.5 -> ~0.16 (pooled ~0.168). The low-speed
+# excess is EPS torque-rate limiting — the "delay" is partly amplitude-dependent,
+# not pure transport. Endpoints held.
+DELAY_SPEEDS = [0.0, 7.5, 12.5, 17.5, 22.5, 27.5, 36.5, 45.0]
+DELAY_VALUES = [0.33, 0.33, 0.33, 0.17, 0.125, 0.12, 0.16, 0.16]
+# A/B flag: False falls back to the single live lat_delay argument everywhere.
+USE_SPEED_INTERP_DELAY = True
+
+# --- Slew-aware FF lead: deterministic counter to the measured
+# amplitude-dependent lag (EPS torque-rate limiting slews large commanded
+# swings slowly at low speed). lead = LEAD_S(v) * d(ff_torque)/dt, clamped.
+# Active below 10 m/s, fading to zero by 20 m/s; default ON (low speed only).
+# Single-constant disable for A/B road testing.
+SLEW_LEAD_ENABLED = True
+LEAD_SPEEDS = [0.0, 10.0, 20.0]
+LEAD_S = [0.15, 0.15, 0.0]     # seconds
+LEAD_TORQUE_CLAMP = 0.15       # normalized torque
+
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
 FRICTION_TORQUE = 0.078
@@ -200,15 +220,19 @@ class LatControlTorque(LatControl):
       curvature_deadzone = abs(VM.calc_curvature(math.radians(self.steering_angle_deadzone_deg), CS.vEgo, 0.0))
       lateral_accel_deadzone = curvature_deadzone * CS.vEgo ** 2
 
-      delay_frames = int(np.clip(lat_delay / self.dt, 1, self.lat_accel_request_buffer_len))
+      # Speed-interpolated delay from the measured table; the live lat_delay
+      # argument remains the fallback (USE_SPEED_INTERP_DELAY = False).
+      eff_delay = float(np.interp(CS.vEgo, DELAY_SPEEDS, DELAY_VALUES)) if USE_SPEED_INTERP_DELAY else lat_delay
+
+      delay_frames = int(np.clip(eff_delay / self.dt, 1, self.lat_accel_request_buffer_len))
       expected_lateral_accel = self.lat_accel_request_buffer[-delay_frames]
       future_desired_lateral_accel = desired_curvature * CS.vEgo ** 2
       self.lat_accel_request_buffer.append(future_desired_lateral_accel)
-      raw_lateral_jerk = (future_desired_lateral_accel - expected_lateral_accel) / max(lat_delay, self.dt)
+      raw_lateral_jerk = (future_desired_lateral_accel - expected_lateral_accel) / max(eff_delay, self.dt)
       raw_lateral_jerk = np.clip(raw_lateral_jerk, -MAX_LAT_JERK_UP, MAX_LAT_JERK_UP)
       desired_lateral_jerk = np.clip(self.jerk_filter.update(raw_lateral_jerk), -MAX_LAT_JERK_UP, MAX_LAT_JERK_UP)
       gravity_adjusted_future_lateral_accel = future_desired_lateral_accel - roll_compensation
-      setpoint = expected_lateral_accel + desired_lateral_jerk * lat_delay
+      setpoint = expected_lateral_accel + desired_lateral_jerk * eff_delay
       desired_lateral_accel_rate = (setpoint - self.prev_desired_lateral_accel) / self.dt
       unwind_detected = (desired_lateral_accel_rate < UNWIND_D_DES_THRESHOLD and
                          abs(setpoint) < UNWIND_LAT_ACCEL_NEAR_ZERO)
@@ -254,6 +278,12 @@ class LatControlTorque(LatControl):
 
       if not USE_ERROR_FRICTION:
         output_torque += FRICTION_TORQUE * math.tanh(ff_torque_rate / FRICTION_RATE_SCALE)
+
+      # Slew-aware lead: phase recovery against EPS torque-rate limiting at low
+      # speed. Uses the same filtered desired-torque rate as the friction comp.
+      if SLEW_LEAD_ENABLED:
+        lead_s = float(np.interp(CS.vEgo, LEAD_SPEEDS, LEAD_S))
+        output_torque += float(np.clip(lead_s * ff_torque_rate, -LEAD_TORQUE_CLAMP, LEAD_TORQUE_CLAMP))
 
       output_torque = float(np.clip(output_torque, -self.steer_max, self.steer_max))
 
