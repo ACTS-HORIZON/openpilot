@@ -204,3 +204,41 @@ class TestRobustness:
     assert torque == 0.0
     assert not pid_log.active
     assert lac.pid.i == 0.0
+
+
+class TestFrictionHysteresis:
+  def test_sign_flips_with_desired_rate(self):
+    # deliverable: friction comp sign flips with desired torque rate
+    lac = make_controller()
+    v = 20.0
+    # ramp desired curvature up: positive desired torque rate
+    torques_up = []
+    for c in np.linspace(0.0, 0.02, 50):
+      t, _, _ = run_update(lac, v_ego=v, desired_curvature=float(c))
+      torques_up.append(t)
+    rate_up = lac.ff_torque_rate_filter.x
+    comp_up = gv60.FRICTION_TORQUE * math.tanh(rate_up / gv60.FRICTION_RATE_SCALE)
+
+    lac2 = make_controller()
+    for c in np.linspace(0.0, -0.02, 50):
+      run_update(lac2, v_ego=v, desired_curvature=float(c))
+    rate_down = lac2.ff_torque_rate_filter.x
+    comp_down = gv60.FRICTION_TORQUE * math.tanh(rate_down / gv60.FRICTION_RATE_SCALE)
+
+    assert comp_up > 0.0
+    assert comp_down < 0.0
+    assert abs(comp_up) <= gv60.FRICTION_TORQUE + 1e-9
+    assert abs(comp_down) <= gv60.FRICTION_TORQUE + 1e-9
+
+  def test_no_comp_at_steady_state(self):
+    lac = make_controller()
+    for _ in range(300):
+      run_update(lac, v_ego=20.0, desired_curvature=0.0)
+    comp = gv60.FRICTION_TORQUE * math.tanh(lac.ff_torque_rate_filter.x / gv60.FRICTION_RATE_SCALE)
+    assert abs(comp) < 1e-6
+
+  def test_comp_bounded_by_friction_torque(self):
+    # even extreme desired rates saturate at +/- FRICTION_TORQUE (tanh)
+    for rate in [-1e6, -1.0, 1.0, 1e6]:
+      comp = gv60.FRICTION_TORQUE * math.tanh(rate / gv60.FRICTION_RATE_SCALE)
+      assert abs(comp) <= gv60.FRICTION_TORQUE + 1e-12

@@ -65,6 +65,17 @@ LAF_GAINS  = [1.0, 1.0, 1.3,  2.0,  2.3,  2.6,  3.0,  3.6,  4.2]
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
 FRICTION_TORQUE = 0.078
+# smooth_sign(rate) = tanh(rate / FRICTION_RATE_SCALE): full compensation once the
+# desired torque rate clearly commits to a direction, near-zero at rest so the
+# term cannot chatter on straight-road lane-keeping noise. 0.05 torque/s reaches
+# ~76% compensation at a 0.1/s desired rate.
+FRICTION_RATE_SCALE = 0.05    # normalized torque per second
+# Low-pass on the desired-torque rate driving the hysteresis compensation (and,
+# later, the slew lead) — raw d/dt of the FF at 100 Hz is too noisy to sign.
+FF_RATE_FILTER_CUTOFF_HZ = 2.0
+# A/B flag: True restores the error-driven get_friction term (StarPilot/stock
+# style) instead of the hysteresis-model compensation.
+USE_ERROR_FRICTION = False
 
 # =============================================================================
 # Controller constants
@@ -110,6 +121,9 @@ class LatControlTorque(LatControl):
     self.steer_release_i_decay = 0.8
     self.prev_steering_pressed = False
     self.prev_desired_lateral_accel = 0.0
+    # Desired (FF) torque rate — drives the friction hysteresis compensation.
+    self.prev_ff_torque = 0.0
+    self.ff_torque_rate_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * FF_RATE_FILTER_CUTOFF_HZ), self.dt)
 
     # Live torque learner values — logged, not applied (see update_live_torque_params).
     self.live_lat_accel_factor = float(self.torque_params.latAccelFactor)
@@ -171,6 +185,8 @@ class LatControlTorque(LatControl):
       self.measurement_rate_filter.x = 0.0
       self.lat_accel_request_buffer = deque([0.] * self.lat_accel_request_buffer_len, maxlen=self.lat_accel_request_buffer_len)
       self.prev_desired_lateral_accel = 0.0
+      self.prev_ff_torque = 0.0
+      self.ff_torque_rate_filter.x = 0.0
     else:
       if self.prev_steering_pressed and not CS.steeringPressed:
         self.pid.i *= self.steer_release_i_decay
@@ -212,10 +228,19 @@ class LatControlTorque(LatControl):
       # latAccelOffset corrects roll compensation bias from device roll misalignment relative to car roll
       ff -= self.torque_params.latAccelOffset
 
-      # Error-based friction term (StarPilot/stock style), kept for A/B against
-      # the hysteresis-model compensation added in the next commit.
-      friction_threshold = get_starpilot_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
-      ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, friction_threshold, self.torque_params)
+      # Friction. Default: hysteresis-model compensation in TORQUE space, driven
+      # by the direction of the DESIRED torque rate (measured half-width
+      # FRICTION_TORQUE) — added after the lat-accel -> torque conversion below.
+      # A/B fallback: the error-driven get_friction term in lat-accel space.
+      if USE_ERROR_FRICTION:
+        friction_threshold = get_starpilot_friction_threshold(CS.vEgo, setpoint, desired_lateral_jerk)
+        ff += get_friction(error + JERK_GAIN * desired_lateral_jerk, lateral_accel_deadzone, friction_threshold, self.torque_params)
+
+      # Desired torque and its (filtered) rate, from the FF path only — feedback
+      # noise must not drive the hysteresis sign.
+      ff_torque = ff / k_v
+      ff_torque_rate = self.ff_torque_rate_filter.update((ff_torque - self.prev_ff_torque) / self.dt)
+      self.prev_ff_torque = ff_torque
 
       if CS.vEgo < self.low_speed_reset_threshold:
         self.pid.reset()
@@ -226,6 +251,10 @@ class LatControlTorque(LatControl):
       # Torque conversion through the measured gain table — replaces
       # torque_from_lateral_accel(latAccelFactor).
       output_torque = output_lataccel / k_v
+
+      if not USE_ERROR_FRICTION:
+        output_torque += FRICTION_TORQUE * math.tanh(ff_torque_rate / FRICTION_RATE_SCALE)
+
       output_torque = float(np.clip(output_torque, -self.steer_max, self.steer_max))
 
       # Low-speed angle assist hook (rewrites output torque below ~3.25 m/s)
