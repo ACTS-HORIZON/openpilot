@@ -85,11 +85,21 @@ KP = 0.6
 KI = 0.35
 KD = 0.0
 
-# Gain schedule inherited from the StarPilot port. With the FF now correct at all
-# speeds this is known to be ~3x too hot at low speed; rescaled in a separate,
-# independently revertable commit.
+# Gain schedule. The StarPilot port's KP table was tuned against a torque conversion
+# using the learner's scalar latAccelFactor (~3.15 on this car). The conversion now
+# goes through the measured k(v), which is ~1.0 at low speed - roughly 3x smaller -
+# so the same lat-accel-space KP applies ~3x more torque per unit error down there.
+#
+# Fix: define the schedule in TORQUE space (the quantity that physically sets loop
+# gain) and scale by k(v) to get the lat-accel-space gain the PID expects. Single
+# source of truth: when LAF_GAINS moves, KP follows and the torque-loop gain holds.
+# Numerically identical to the hand-computed phase (d) table.
+LAF_REFERENCE = 3.15   # learner's typical scalar latAccelFactor (July 2026 routes)
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
-KP_INTERP = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]
+KP_INTERP_STARPILOT = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]  # pre-rescale, A/B reference
+KP_TORQUE_INTERP = [g / LAF_REFERENCE for g in KP_INTERP_STARPILOT]
+KP_INTERP = [g * float(np.interp(v, LAF_SPEEDS, LAF_GAINS))
+             for v, g in zip(INTERP_SPEEDS, KP_TORQUE_INTERP)]
 
 MAX_LAT_JERK_UP = 2.5            # m/s^3
 
