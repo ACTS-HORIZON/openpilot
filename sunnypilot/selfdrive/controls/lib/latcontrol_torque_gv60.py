@@ -60,7 +60,7 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # regime. Steady-state closed-loop measurement slightly underestimates pure gain
 # (friction eats some); the 12.5 m/s bin was the noisiest in every run.
 LAF_SPEEDS = [0.0, 5.0, 7.5, 12.5, 17.5, 22.5, 27.5, 36.5, 45.0]
-LAF_GAINS  = [1.0, 1.0, 1.3,  2.0,  2.3,  2.6,  3.0,  3.6,  4.2]
+LAF_GAINS  = [1.04, 1.04, 1.55, 2.94, 3.49, 4.32, 5.36, 5.42, 5.42]
 
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
