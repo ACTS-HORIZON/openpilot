@@ -59,12 +59,17 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # 5 m/s to avoid divide-by-small where the low-speed angle assist should own the
 # regime. Steady-state closed-loop measurement slightly underestimates pure gain
 # (friction eats some); the 12.5 m/s bin was the noisiest in every run.
-LAF_SPEEDS = [0.0, 5.0, 7.5, 12.5, 17.5, 22.5, 27.5, 36.5, 45.0]
-LAF_GAINS  = [1.04, 1.04, 1.55, 2.94, 3.49, 4.32, 5.36, 5.42, 5.42]
+LAF_SPEEDS = [0.0, 6.2, 8.8, 12.5, 16.4, 23.2, 27.6, 36.5, 45.0]
+LAF_GAINS  = [1.02, 1.02, 2.12, 2.96, 3.29, 4.25, 5.27, 5.42, 5.42]
 
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
-FRICTION_TORQUE = 0.078
+# Friction is strongly speed-dependent - tire scrub at parking speed needs several
+# times the breakaway torque it does on the highway - so a scalar was wrong in
+# shape, not just in value. Measured jointly with LAF_GAINS above; the two tables
+# are one fit and must move together.
+FRICTION_SPEEDS   = [0.0, 6.2, 8.8, 12.5, 16.4, 23.2, 27.6, 33.3, 45.0]
+FRICTION_TORQUE_V = [0.205, 0.205, 0.201, 0.125, 0.103, 0.065, 0.071, 0.092, 0.092]
 # smooth_sign(rate) = tanh(rate / FRICTION_RATE_SCALE): full compensation once the
 # desired torque rate clearly commits to a direction, near-zero at rest so the
 # term cannot chatter on straight-road lane-keeping noise. 0.05 torque/s reaches
@@ -263,7 +268,8 @@ class LatControlTorque(LatControl):
       output_torque = output_lataccel / k_v
 
       if not USE_ERROR_FRICTION:
-        output_torque += FRICTION_TORQUE * math.tanh(ff_torque_rate / FRICTION_RATE_SCALE)
+        friction_torque = float(np.interp(CS.vEgo, FRICTION_SPEEDS, FRICTION_TORQUE_V))
+        output_torque += friction_torque * math.tanh(ff_torque_rate / FRICTION_RATE_SCALE)
 
       output_torque = float(np.clip(output_torque, -self.steer_max, self.steer_max))
 
