@@ -70,6 +70,13 @@ LAF_GAINS  = [1.02, 1.02, 2.12, 2.96, 3.29, 4.25, 5.27, 5.42, 5.42]
 # are one fit and must move together.
 FRICTION_SPEEDS   = [0.0, 6.2, 8.8, 12.5, 16.4, 23.2, 27.6, 33.3, 45.0]
 FRICTION_TORQUE_V = [0.205, 0.205, 0.201, 0.125, 0.103, 0.065, 0.071, 0.092, 0.092]
+
+# Small-signal slope of the compensation term, friction / rate_scale. Held at the
+# value that was stable with the old flat constants (0.078 / 0.05). Deriving the
+# rate scale from the friction table instead of pinning it keeps one source of
+# truth: refit friction and the softness follows automatically.
+FRICTION_SLOPE = 1.56
+FRICTION_RATE_SCALE_V = [f / FRICTION_SLOPE for f in FRICTION_TORQUE_V]
 # smooth_sign(rate) = tanh(rate / FRICTION_RATE_SCALE): full compensation once the
 # desired torque rate clearly commits to a direction, near-zero at rest so the
 # term cannot chatter on straight-road lane-keeping noise. 0.05 torque/s reaches
@@ -269,7 +276,8 @@ class LatControlTorque(LatControl):
 
       if not USE_ERROR_FRICTION:
         friction_torque = float(np.interp(CS.vEgo, FRICTION_SPEEDS, FRICTION_TORQUE_V))
-        output_torque += friction_torque * math.tanh(ff_torque_rate / FRICTION_RATE_SCALE)
+        friction_rate_scale = float(np.interp(CS.vEgo, FRICTION_SPEEDS, FRICTION_RATE_SCALE_V))
+        output_torque += friction_torque * math.tanh(ff_torque_rate / friction_rate_scale)
 
       output_torque = float(np.clip(output_torque, -self.steer_max, self.steer_max))
 
