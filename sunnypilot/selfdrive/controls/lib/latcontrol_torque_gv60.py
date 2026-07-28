@@ -59,8 +59,9 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # 5 m/s to avoid divide-by-small where the low-speed angle assist should own the
 # regime. Steady-state closed-loop measurement slightly underestimates pure gain
 # (friction eats some); the 12.5 m/s bin was the noisiest in every run.
-LAF_SPEEDS = [0.0, 6.2, 8.8, 12.5, 16.4, 23.2, 27.6, 36.5, 45.0]
-LAF_GAINS  = [1.02, 1.02, 2.12, 2.96, 3.29, 4.25, 5.27, 5.42, 5.42]
+# refit: clip-corrected, 51511 frames
+LAF_SPEEDS = [0.0, 6.3, 8.9, 12.5, 16.4, 23.2, 27.6, 36.5, 45.0]
+LAF_GAINS  = [1.71, 1.71, 2.57, 3.30, 3.76, 4.25, 5.27, 5.42, 5.42]
 
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
@@ -68,8 +69,8 @@ LAF_GAINS  = [1.02, 1.02, 2.12, 2.96, 3.29, 4.25, 5.27, 5.42, 5.42]
 # times the breakaway torque it does on the highway - so a scalar was wrong in
 # shape, not just in value. Measured jointly with LAF_GAINS above; the two tables
 # are one fit and must move together.
-FRICTION_SPEEDS   = [0.0, 6.2, 8.8, 12.5, 16.4, 23.2, 27.6, 33.3, 45.0]
-FRICTION_TORQUE_V = [0.205, 0.205, 0.201, 0.125, 0.103, 0.065, 0.071, 0.092, 0.092]
+FRICTION_SPEEDS   = [0.0, 6.3, 8.9, 12.5, 16.4, 23.2, 27.6, 33.3, 45.0]
+FRICTION_TORQUE_V = [0.232, 0.232, 0.179, 0.118, 0.098, 0.065, 0.071, 0.092, 0.092]
 
 # Small-signal slope of the compensation term, friction / rate_scale. Held at the
 # value that was stable with the old flat constants (0.078 / 0.05). Deriving the
@@ -114,7 +115,7 @@ KP_INTERP_STARPILOT = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]  # pre-rescale
 # turns the loop into a relay. Measured: P alone demanded 5.8x full authority at
 # 3 m/s. 0.6 holds P to ~0.35 of authority at the 90th-percentile error and is
 # already above the schedule at 15 m/s+, so the highway is untouched.
-KP_TORQUE_MAX = 0.6
+KP_TORQUE_MAX = 1.5
 KP_TORQUE_INTERP = [min(g / LAF_REFERENCE, KP_TORQUE_MAX) for g in KP_INTERP_STARPILOT]
 KP_INTERP = [g * float(np.interp(v, LAF_SPEEDS, LAF_GAINS))
              for v, g in zip(INTERP_SPEEDS, KP_TORQUE_INTERP)]
