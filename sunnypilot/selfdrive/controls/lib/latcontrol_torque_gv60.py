@@ -109,7 +109,13 @@ KD = 0.0
 LAF_REFERENCE = 3.15   # learner's typical scalar latAccelFactor (July 2026 routes)
 INTERP_SPEEDS = [1, 1.5, 2.0, 3.0, 5, 7.5, 10, 15, 30]
 KP_INTERP_STARPILOT = [250, 120, 65, 30, 11.5, 5.5, 3.5, 2.0, KP]  # pre-rescale, A/B reference
-KP_TORQUE_INTERP = [g / LAF_REFERENCE for g in KP_INTERP_STARPILOT]
+# Ceiling on torque-space loop gain. The stock schedule ramps to 79 at 1 m/s, which
+# with an accurate feedforward saturates the actuator on ordinary tracking error and
+# turns the loop into a relay. Measured: P alone demanded 5.8x full authority at
+# 3 m/s. 0.6 holds P to ~0.35 of authority at the 90th-percentile error and is
+# already above the schedule at 15 m/s+, so the highway is untouched.
+KP_TORQUE_MAX = 0.6
+KP_TORQUE_INTERP = [min(g / LAF_REFERENCE, KP_TORQUE_MAX) for g in KP_INTERP_STARPILOT]
 KP_INTERP = [g * float(np.interp(v, LAF_SPEEDS, LAF_GAINS))
              for v, g in zip(INTERP_SPEEDS, KP_TORQUE_INTERP)]
 
