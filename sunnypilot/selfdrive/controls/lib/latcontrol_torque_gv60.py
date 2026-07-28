@@ -116,7 +116,7 @@ KP_INTERP_STARPILOT = [250, 120, 65, 30, 11.5, 5.5, 3.5, 3.2, KP]  # pre-rescale
 # 3 m/s. 0.6 holds P to ~0.35 of authority at the 90th-percentile error and is
 # already above the schedule at 15 m/s+, so the highway is untouched.
 # kp: mid-speed knot raised from route 0000013f
-KP_TORQUE_MAX = 2.0
+KP_TORQUE_MAX = 1.5
 KP_TORQUE_INTERP = [min(g / LAF_REFERENCE, KP_TORQUE_MAX) for g in KP_INTERP_STARPILOT]
 KP_INTERP = [g * float(np.interp(v, LAF_SPEEDS, LAF_GAINS))
              for v, g in zip(INTERP_SPEEDS, KP_TORQUE_INTERP)]
