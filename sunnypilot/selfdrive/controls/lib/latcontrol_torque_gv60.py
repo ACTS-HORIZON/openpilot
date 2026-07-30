@@ -89,7 +89,7 @@ FRICTION_RATE_SCALE = 0.05    # normalized torque per second
 FF_RATE_FILTER_CUTOFF_HZ = 2.0
 # A/B flag: True restores the error-driven get_friction term (StarPilot/stock
 # style) instead of the hysteresis-model compensation.
-USE_ERROR_FRICTION = False
+USE_ERROR_FRICTION = True
 
 # =============================================================================
 # Controller constants
