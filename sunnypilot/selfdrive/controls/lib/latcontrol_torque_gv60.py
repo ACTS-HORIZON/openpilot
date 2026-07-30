@@ -60,9 +60,9 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # regime. Steady-state closed-loop measurement slightly underestimates pure gain
 # (friction eats some); the 12.5 m/s bin was the noisiest in every run.
 # refit: clip-corrected, 51511 frames
-# refit: applied-torque, 51282 frames
+# refit: IMU yaw-rate reference, 51166 frames
 LAF_SPEEDS = [0.0, 6.3, 8.8, 12.5, 16.4, 23.2, 27.7, 36.5, 45.0]
-LAF_GAINS  = [2.08, 2.08, 3.01, 3.64, 4.19, 4.84, 5.92, 5.42, 5.42]
+LAF_GAINS  = [2.30, 2.30, 3.22, 3.72, 4.17, 4.78, 5.84, 5.42, 5.42]
 
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
@@ -70,8 +70,8 @@ LAF_GAINS  = [2.08, 2.08, 3.01, 3.64, 4.19, 4.84, 5.92, 5.42, 5.42]
 # times the breakaway torque it does on the highway - so a scalar was wrong in
 # shape, not just in value. Measured jointly with LAF_GAINS above; the two tables
 # are one fit and must move together.
-FRICTION_SPEEDS   = [0.0, 6.3, 8.8, 12.5, 16.4, 23.2, 27.7, 33.3, 45.0]
-FRICTION_TORQUE_V = [0.256, 0.256, 0.194, 0.145, 0.118, 0.083, 0.088, 0.106, 0.106]
+FRICTION_SPEEDS   = [0.0, 6.3, 8.8, 12.5, 16.4, 23.2, 27.7, 33.4, 45.0]
+FRICTION_TORQUE_V = [0.270, 0.270, 0.201, 0.150, 0.122, 0.087, 0.091, 0.109, 0.109]
 
 # Small-signal slope of the compensation term, friction / rate_scale. Held at the
 # value that was stable with the old flat constants (0.078 / 0.05). Deriving the
@@ -89,7 +89,7 @@ FRICTION_RATE_SCALE = 0.05    # normalized torque per second
 FF_RATE_FILTER_CUTOFF_HZ = 2.0
 # A/B flag: True restores the error-driven get_friction term (StarPilot/stock
 # style) instead of the hysteresis-model compensation.
-USE_ERROR_FRICTION = True
+USE_ERROR_FRICTION = False
 
 # =============================================================================
 # Controller constants
