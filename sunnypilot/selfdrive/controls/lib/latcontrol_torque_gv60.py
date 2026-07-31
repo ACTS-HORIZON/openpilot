@@ -52,17 +52,9 @@ from openpilot.sunnypilot.selfdrive.controls.lib.latcontrol_vehicle_tunes import
 # These constants ARE the controller: change them only against new measurements.
 # =============================================================================
 
-# --- Gain k(v): achieved lateral accel (m/s^2, roll-compensated) per unit
-# normalized torque, steady state. Measured bins (v m/s -> k):
-#   7.5 -> 1.18, 12.5 -> 2.22, 17.5 -> 2.26, 22.5 -> 2.62, 27.5 -> 3.10, 36.5 -> 3.56
-# Linear fit k(v) ~= 0.55 + 0.085*v. Endpoints extrapolated; floored at 1.0 below
-# 5 m/s to avoid divide-by-small where the low-speed angle assist should own the
-# regime. Steady-state closed-loop measurement slightly underestimates pure gain
-# (friction eats some); the 12.5 m/s bin was the noisiest in every run.
-# refit: clip-corrected, 51511 frames
-# refit: IMU yaw-rate reference, 51166 frames
-LAF_SPEEDS = [0.0, 6.3, 8.8, 12.5, 16.4, 23.2, 27.7, 36.5, 45.0]
-LAF_GAINS  = [2.30, 2.30, 3.22, 3.72, 4.17, 4.78, 5.84, 5.42, 5.42]
+# highway knots set from measured tracking ratio, route 00000150
+LAF_SPEEDS = [0.0, 6.3, 8.8, 12.5, 16.4, 23.2, 27.9, 33.4, 45.0]
+LAF_GAINS  = [2.30, 2.30, 3.22, 3.72, 4.17, 4.35, 3.95, 4.25, 4.60]
 
 # --- Friction / hysteresis: measured half-width in normalized torque
 # (~0.19 m/s^2 lat-accel-equivalent at 20 m/s).
