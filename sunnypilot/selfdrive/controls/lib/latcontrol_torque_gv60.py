@@ -79,6 +79,11 @@ FRICTION_RATE_SCALE = 0.05    # normalized torque per second
 # Low-pass on the desired-torque rate driving the hysteresis compensation (and,
 # later, the slew lead) — raw d/dt of the FF at 100 Hz is too noisy to sign.
 FF_RATE_FILTER_CUTOFF_HZ = 2.0
+
+# Cutoff for the error signal feeding the PID. Measured on route 00000150: 91% of P
+# term power sits in 2-5 Hz, which is steering-angle quantization, not road curvature.
+# 1.2 Hz passes the ~0.4 Hz disturbances P should correct and rejects the rest.
+ERROR_FILTER_CUTOFF_HZ = 1.2
 # A/B flag: True restores the error-driven get_friction term (StarPilot/stock
 # style) instead of the hysteresis-model compensation.
 USE_ERROR_FRICTION = False
@@ -147,6 +152,7 @@ class LatControlTorque(LatControl):
     # Desired (FF) torque rate — drives the friction hysteresis compensation.
     self.prev_ff_torque = 0.0
     self.ff_torque_rate_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * FF_RATE_FILTER_CUTOFF_HZ), self.dt)
+    self.error_filter = FirstOrderFilter(0.0, 1 / (2 * np.pi * ERROR_FILTER_CUTOFF_HZ), self.dt)
 
     # Live torque learner values — logged, not applied (see update_live_torque_params).
     self.live_lat_accel_factor = float(self.torque_params.latAccelFactor)
@@ -210,6 +216,7 @@ class LatControlTorque(LatControl):
       self.prev_desired_lateral_accel = 0.0
       self.prev_ff_torque = 0.0
       self.ff_torque_rate_filter.x = 0.0
+      self.error_filter.x = 0.0
     else:
       if self.prev_steering_pressed and not CS.steeringPressed:
         self.pid.i *= self.steer_release_i_decay
@@ -242,7 +249,9 @@ class LatControlTorque(LatControl):
       measurement_rate = np.clip(measurement_rate, -MAX_LAT_JERK_UP, MAX_LAT_JERK_UP)
       self.previous_measurement = measurement
 
-      error = setpoint - measurement
+      # P acts on the filtered error; the raw value is logged so the two stay
+      # comparable against earlier routes.
+      error = self.error_filter.update(setpoint - measurement)
       pid_log.error = float(error)
 
       # Inverse-EPS feedforward in lateral-accel space; conversion to torque via
