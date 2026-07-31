@@ -78,7 +78,7 @@ FRICTION_RATE_SCALE_V = [f / FRICTION_SLOPE for f in FRICTION_TORQUE_V]
 FRICTION_RATE_SCALE = 0.05    # normalized torque per second
 # Low-pass on the desired-torque rate driving the hysteresis compensation (and,
 # later, the slew lead) — raw d/dt of the FF at 100 Hz is too noisy to sign.
-FF_RATE_FILTER_CUTOFF_HZ = 2.0
+FF_RATE_FILTER_CUTOFF_HZ = 0.7
 
 # Cutoff for the error signal feeding the PID. Measured on route 00000150: 91% of P
 # term power sits in 2-5 Hz, which is steering-angle quantization, not road curvature.
