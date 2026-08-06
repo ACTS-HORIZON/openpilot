@@ -94,7 +94,7 @@ USE_ERROR_FRICTION = False
 
 KP = 0.6
 KI = 0.35
-KD = 0.3
+KD = 0.0
 
 # Gain schedule. The StarPilot port's KP table was tuned against a torque conversion
 # using the learner's scalar latAccelFactor (~3.15 on this car). The conversion now
