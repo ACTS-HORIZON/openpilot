@@ -2,7 +2,7 @@
 import math
 from numbers import Number
 
-from openpilot.cereal import log
+from openpilot.cereal import custom, log
 from opendbc.car.structs import car
 import openpilot.cereal.messaging as messaging
 from openpilot.common.constants import CV
@@ -27,6 +27,10 @@ from openpilot.sunnypilot.selfdrive.controls.controlsd_ext import ControlsExt
 State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
+AssistState = custom.LongitudinalPlanSP.SpeedLimit.AssistState
+SpeedLimitPrompt = car.CarControl.HUDControl.SpeedLimitPrompt
+
+SLA_PROMPT_HOLD_FRAMES = int(4. / DT_CTRL)  # show "speed has changed" popup for 4s after the set speed updates
 
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
@@ -52,6 +56,12 @@ class Controls(ControlsExt):
     self.steer_limited_by_safety = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
+    self.left_lane_visible = False
+    self.right_lane_visible = False
+    self.sla_state_prev = AssistState.disabled
+    self.sla_prompt_frames = 0
+    self.sla_auto_frames = 0
+    self.sla_limit_prev = 0
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -189,11 +199,56 @@ class Controls(ControlsExt):
     hudControl.leadDistanceBars = self.sm['selfdriveState'].personality.raw + 1
     hudControl.visualAlert = self.sm['selfdriveState'].alertHudVisual
 
-    hudControl.rightLaneVisible = True
-    hudControl.leftLaneVisible = True
+    # cluster lane display reflects the model, with hysteresis to stop flicker (drives ccIC LKA_RcgSta)
+    lane_probs = self.sm['modelV2'].laneLineProbs
+    LANE_ON, LANE_OFF = 0.75, 0.35
+    if len(lane_probs) > 2:
+      if lane_probs[1] > LANE_ON: self.left_lane_visible = True
+      elif lane_probs[1] < LANE_OFF: self.left_lane_visible = False
+      if lane_probs[2] > LANE_ON: self.right_lane_visible = True
+      elif lane_probs[2] < LANE_OFF: self.right_lane_visible = False
+    hudControl.leftLaneVisible = self.left_lane_visible
+    hudControl.rightLaneVisible = self.right_lane_visible
     if self.sm.valid['driverAssistance']:
       hudControl.leftLaneDepart = self.sm['driverAssistance'].leftLaneDeparture
       hudControl.rightLaneDepart = self.sm['driverAssistance'].rightLaneDeparture
+
+    # cluster speed limit sign mirrors the sunnypilot SLA sign on the comma (drives ccIC ISLW_SpdCluMainDis)
+    speed_limit = self.sm['longitudinalPlanSP'].speedLimit
+    resolver = speed_limit.resolver
+    has_limit = resolver.speedLimitValid or resolver.speedLimitLastValid
+    hudControl.speedLimit = float(resolver.speedLimitLast) if has_limit else 0.0
+    # set speed turns green on the cluster while SLA is actively managing it, mirroring the comma screen
+    hudControl.speedLimitActive = speed_limit.assist.active
+
+    # cluster set speed change prompt mirrors SLA state (drives ccIC ISLA arrow + popup):
+    # - preActive = a below-threshold limit awaiting confirmation -> flashing arrow ("willChange"),
+    #   and the preActive -> active/adapting transition once confirmed -> "hasChanged" popup (4s).
+    # - an above-threshold limit auto-applies WITHOUT entering preActive (it just changes while active),
+    #   so detect it by the limit value changing while managing -> "willAutoChange" (auto-adjusting, 4s).
+    assist_state = speed_limit.assist.state
+    limit_now = round(float(resolver.speedLimitLast)) if has_limit else 0
+    if assist_state == AssistState.preActive:
+      hudControl.speedLimitPrompt = SpeedLimitPrompt.willChange
+      self.sla_prompt_frames = 0
+      self.sla_auto_frames = 0
+    elif assist_state in (AssistState.adapting, AssistState.active):
+      if self.sla_state_prev == AssistState.preActive:
+        self.sla_prompt_frames = SLA_PROMPT_HOLD_FRAMES
+      elif limit_now > 0 and self.sla_limit_prev > 0 and limit_now != self.sla_limit_prev:
+        self.sla_auto_frames = SLA_PROMPT_HOLD_FRAMES
+      if self.sla_prompt_frames > 0:
+        self.sla_prompt_frames -= 1
+        hudControl.speedLimitPrompt = SpeedLimitPrompt.hasChanged
+        self.sla_auto_frames = 0
+      elif self.sla_auto_frames > 0:
+        self.sla_auto_frames -= 1
+        hudControl.speedLimitPrompt = SpeedLimitPrompt.willAutoChange
+    else:
+      self.sla_prompt_frames = 0
+      self.sla_auto_frames = 0
+    self.sla_state_prev = assist_state
+    self.sla_limit_prev = limit_now
 
     if self.get_lat_active(self.sm):
       CO = self.sm['carOutput']
