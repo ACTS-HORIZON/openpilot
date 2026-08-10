@@ -2,3 +2,8 @@
 	url = https://gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git/info/lfs
 	pushurl = ssh://git@gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git
 	locksverify = false
+	# big_driving_supercombo.onnx (1.7 GB) is only used for USB GPU / BIG_INTO_SMALL
+	# builds, never on the comma device. Skip it by default so device installs
+	# don't stall on the download; fetch it explicitly when needed with:
+	#   git lfs pull --include="openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx"
+	fetchexclude = openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx
