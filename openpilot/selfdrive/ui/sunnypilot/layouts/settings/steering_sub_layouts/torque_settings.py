@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable
 import pyray as rl
 
-from cereal import log
+from openpilot.cereal import log
 from openpilot.common.basedir import BASEDIR
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
