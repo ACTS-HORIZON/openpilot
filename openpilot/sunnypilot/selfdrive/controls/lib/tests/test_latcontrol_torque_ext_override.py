@@ -4,6 +4,8 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+import pytest
+
 from opendbc.car.structs import car
 
 from openpilot.common.params import Params
@@ -14,11 +16,11 @@ class TestLatControlTorqueExtOverride:
 
   def setup_method(self):
     self.params = Params()
-    self.params.put_bool("EnforceTorqueControl", True)
-    self.params.put_bool("TorqueParamsOverrideEnabled", True)
-    self.params.put("TorqueParamsOverrideLatAccelFactor", "2.5")
-    self.params.put("TorqueParamsOverrideFriction", "0.1")
-    self.params.put("TorqueParamsOverrideLatAccelOffset", "-0.42")
+    self.params.put_bool("EnforceTorqueControl", True, block=True)
+    self.params.put_bool("TorqueParamsOverrideEnabled", True, block=True)
+    self.params.put("TorqueParamsOverrideLatAccelFactor", 2.5, block=True)
+    self.params.put("TorqueParamsOverrideFriction", 0.1, block=True)
+    self.params.put("TorqueParamsOverrideLatAccelOffset", -0.42, block=True)
     self.override = LatControlTorqueExtOverride(car.CarParams())
 
   def test_offset_passthrough(self):
@@ -31,6 +33,7 @@ class TestLatControlTorqueExtOverride:
         break
 
     assert applied
-    assert torque_params.latAccelFactor == 2.5
-    assert torque_params.friction == 0.1
-    assert torque_params.latAccelOffset == -0.42
+    # capnp stores these as Float32, so compare with float32 precision
+    assert torque_params.latAccelFactor == pytest.approx(2.5)
+    assert torque_params.friction == pytest.approx(0.1)
+    assert torque_params.latAccelOffset == pytest.approx(-0.42)
