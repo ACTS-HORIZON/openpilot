@@ -47,8 +47,12 @@ def joystickd_thread():
       joystick_axes = [0.0, 0.0]
 
     if CC.longActive:
-      actuators.accel = 4.0 * float(np.clip(joystick_axes[0], -1, 1))
-      actuators.longControlState = LongCtrlState.pid if sm['carState'].vEgo > 0.1 else LongCtrlState.stopping
+      accel_axis = float(np.clip(joystick_axes[0], -1, 1))
+      actuators.accel = accel_axis * (1.8 if accel_axis > 0 else 3.3)
+      # Don't force 'stopping' while positive accel is commanded, or the car can never
+      # pull away from a standstill under joystick control.
+      moving_or_launching = sm['carState'].vEgo > 0.1 or actuators.accel > 0.0
+      actuators.longControlState = LongCtrlState.pid if moving_or_launching else LongCtrlState.stopping
       CC.cruiseControl.resume = actuators.accel > 0.0
 
     if CC.latActive:
