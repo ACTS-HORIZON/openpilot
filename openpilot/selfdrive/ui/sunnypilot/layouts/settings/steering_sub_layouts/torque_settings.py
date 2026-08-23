@@ -141,7 +141,7 @@ class TorqueSettingsLayout(Widget):
     """Returns torqued's baseline estimates as (factor, friction, offset), where each entry is a
     float or None if not available.
 
-    Once torqued is liveValid we surface the *Filtered values. Before then, the filtered values
+    Once torqued is valid we surface the *Filtered values. Before then, the filtered values
     aren't meaningful (and the offset filter is pinned at its 0.0 init), so we fall back to the
     ~1-minute average of the raw estimates that torqued caches."""
     blob = ui_state.params.get("LiveTorqueParameters")
@@ -149,12 +149,12 @@ class TorqueSettingsLayout(Widget):
       return self._get_raw_average() or (None, None, None)
     try:
       with log.Event.from_bytes(blob) as evt:
-        ltp = evt.liveTorqueParameters
-        if ltp.liveValid:
+        ltp = evt.lateralTorqueParameters
+        if ltp.valid:
           return (ltp.latAccelFactorFiltered, ltp.frictionCoefficientFiltered, ltp.latAccelOffsetFiltered)
     except Exception:
       return None
-    # Not liveValid yet: use the averaged raw estimates as the baseline.
+    # Not valid yet: use the averaged raw estimates as the baseline.
     return self._get_raw_average() or (None, None, None)
 
   def _update_state(self):

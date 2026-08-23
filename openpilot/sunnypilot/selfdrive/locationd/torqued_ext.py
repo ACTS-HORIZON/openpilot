@@ -41,7 +41,7 @@ class TorqueEstimatorExt:
     self.offline_latAccelFactor = 0.0
     self.offline_friction = 0.0
 
-    # Rolling ~1-minute windows of the raw estimates, surfaced as a baseline while not liveValid
+    # Rolling ~1-minute windows of the raw estimates, surfaced as a baseline while not valid
     self.raw_factor_window: deque[float] = deque(maxlen=RAW_AVG_WINDOW)
     self.raw_friction_window: deque[float] = deque(maxlen=RAW_AVG_WINDOW)
     self.raw_offset_window: deque[float] = deque(maxlen=RAW_AVG_WINDOW)
