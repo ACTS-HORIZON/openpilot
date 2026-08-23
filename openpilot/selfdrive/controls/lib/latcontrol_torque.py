@@ -98,8 +98,14 @@ class LatControlTorque(LatControl):
       pid_log.error = float(error)
 
       freeze_integrator = steer_limited_by_safety or CS.steeringPressed or CS.vEgo < 5
-      output_lataccel = self.pid.update(pid_log.error, speed=CS.vEgo, feedforward=ff, freeze_integrator=freeze_integrator)
-      output_torque = self.torque_from_lateral_accel(output_lataccel, self.torque_params)
+      if getattr(self.extension, '_jerk_aware_enabled', False):
+        # BUGFIX: the jerk-aware extension reuses this same PIDController in
+        # torque space. Running the accel-space update first double-integrates
+        # the shared i-term with ~latAccelFactor x scaled inputs every cycle.
+        output_torque = 0.0
+      else:
+        output_lataccel = self.pid.update(pid_log.error, speed=CS.vEgo, feedforward=ff, freeze_integrator=freeze_integrator)
+        output_torque = self.torque_from_lateral_accel(output_lataccel, self.torque_params)
 
       # Lateral acceleration torque controller extension updates
       # Overrides pid_log.error and output_torque

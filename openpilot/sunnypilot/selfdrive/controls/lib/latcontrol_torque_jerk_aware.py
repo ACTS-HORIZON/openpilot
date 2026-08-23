@@ -27,6 +27,14 @@ class LatControlTorqueJerkAware(LatControlTorqueExtBase):
     if not self._jerk_aware_enabled:
       return
 
+    # BUGFIX: self._pid is the stock controller's PIDController (rebound in
+    # latcontrol_torque_ext.py), whose limits are set by the stock accel-space
+    # update_limits() to +/-steer_max*latAccelFactor. This path runs it in
+    # TORQUE space, so without this the integrator winds to ~latAccelFactor x
+    # the actuator limit and whipsaws through the clip band on unwind,
+    # momentarily commanding zero or reversed torque mid-corner.
+    self._pid.set_limits(self.lac_torque.steer_max, -self.lac_torque.steer_max)
+
     torque_from_setpoint = self.torque_from_lateral_accel_in_torque_space(
       LatControlInputs(self._setpoint, roll_compensation, CS.vEgo, CS.aEgo), self.torque_params, gravity_adjusted=False
     )
