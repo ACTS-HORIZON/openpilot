@@ -19,7 +19,7 @@ RELAXED_MIN_BUCKET_POINTS = np.array([1, 200, 300, 500, 500, 300, 200, 1])
 
 ALLOWED_CARS = ['toyota', 'hyundai', 'rivian', 'honda']
 
-# liveTorqueParameters publishes at 4Hz, so ~240 samples ≈ 1 minute
+# lateralTorqueParameters publishes at 4Hz, so ~240 samples ≈ 1 minute
 RAW_AVG_WINDOW = 240
 RAW_AVG_PARAM = "LiveTorqueParametersRawAvg"
 
@@ -46,13 +46,13 @@ class TorqueEstimatorExt:
     self.raw_friction_window: deque[float] = deque(maxlen=RAW_AVG_WINDOW)
     self.raw_offset_window: deque[float] = deque(maxlen=RAW_AVG_WINDOW)
 
-  def update_raw_average(self, liveTorqueParameters):
+  def update_raw_average(self, lateralTorqueParameters):
     # Only sample when raw estimates are actually being computed (otherwise they're a stale 0.0)
     if not self.filtered_points.is_calculable():
       return
-    self.raw_factor_window.append(float(liveTorqueParameters.latAccelFactorRaw))
-    self.raw_friction_window.append(float(liveTorqueParameters.frictionCoefficientRaw))
-    self.raw_offset_window.append(float(liveTorqueParameters.latAccelOffsetRaw))
+    self.raw_factor_window.append(float(lateralTorqueParameters.latAccelFactorRaw))
+    self.raw_friction_window.append(float(lateralTorqueParameters.frictionCoefficientRaw))
+    self.raw_offset_window.append(float(lateralTorqueParameters.latAccelOffsetRaw))
 
   def persist_raw_average(self):
     if not self.raw_factor_window:

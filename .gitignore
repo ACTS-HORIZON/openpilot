@@ -16,7 +16,7 @@ a.out
 .opencode/
 bin/
 
-# created at launch for TICI PYTHONPATH (PC uses editable installs via pyproject.toml)
+# created at launch for comma hardware PYTHONPATH (PC uses editable installs via pyproject.toml)
 /msgq
 /opendbc
 /rednose
@@ -40,6 +40,8 @@ bin/
 *.os-*
 *.so
 *.a
+st[0-9A-Za-z][0-9A-Za-z][0-9A-Za-z][0-9A-Za-z][0-9A-Za-z][0-9A-Za-z]
+*.unchunked
 *.clb
 *.class
 *.pyxbldc
@@ -55,7 +57,7 @@ compare_runtime*.html
 openpilot/selfdrive/modeld/models/tg_input_devices.json
 
 # build artifacts
-docs_site/
+docs/_site/
 openpilot/selfdrive/pandad/pandad
 openpilot/cereal/services.h
 openpilot/cereal/gen
