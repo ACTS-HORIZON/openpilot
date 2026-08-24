@@ -287,4 +287,11 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"TorqueParamsOverrideFriction", {PERSISTENT | BACKUP, FLOAT, "0.1"}},
     {"TorqueParamsOverrideLatAccelFactor", {PERSISTENT | BACKUP, FLOAT, "2.5"}},
     {"TorqueParamsOverrideLatAccelOffset", {PERSISTENT | BACKUP, FLOAT, "0.0"}},
+
+    // Horizon Dev — on-device advanced knobs (Collin / horizonpilot). All default to stock behavior when disabled.
+    {"HorizonSteerMaxEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"HorizonSteerMax", {PERSISTENT | BACKUP, INT, "409"}},          // effective STEER_MAX counts; clamped in-code to the panda cap (409)
+    {"HorizonSteerDampEnabled", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"HorizonSteerDampGain", {PERSISTENT | BACKUP, INT, "100"}},     // LFA Damping_Gain override [3-200]; overrides the speed-interp table
+    {"HorizonCanLabArmed", {PERSISTENT, BOOL, "0"}},                 // master gate for CAN-send experiments; requires the panda TX patch (see HORIZON_DEV_MENU.md)
 };

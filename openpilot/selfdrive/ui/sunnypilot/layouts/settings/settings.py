@@ -14,6 +14,7 @@ from openpilot.selfdrive.ui.layouts.settings.toggles import TogglesLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.cruise import CruiseLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.developer import DeveloperLayoutSP
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.device import DeviceLayoutSP
+from openpilot.selfdrive.ui.sunnypilot.layouts.settings.horizon_dev import HorizonDevLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.display import DisplayLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.models import ModelsLayout
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.network import NetworkUISP
@@ -50,6 +51,7 @@ OP.PanelType = IntEnum(  # type: ignore[assignment] # ty: ignore[invalid-assignm
     "NAVIGATION",
     "TRIPS",
     "VEHICLE",
+    "HORIZON_DEV",
   ],
   start=0,
 )
@@ -125,6 +127,7 @@ class SettingsLayoutSP(OP.SettingsLayout):
       OP.PanelType.VEHICLE: PanelInfo(tr_noop("Vehicle"), VehicleLayout(), icon="../../sunnypilot/selfdrive/assets/offroad/icon_vehicle.png"),
       OP.PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout(), icon="../../sunnypilot/selfdrive/assets/offroad/icon_firehose.png"),
       OP.PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayoutSP(), icon="icons/shell.png"),
+      OP.PanelType.HORIZON_DEV: PanelInfo(tr_noop("Horizon Dev"), HorizonDevLayout(), icon="icons/shell.png"),
     }
 
   def _draw_sidebar(self, rect: rl.Rectangle):

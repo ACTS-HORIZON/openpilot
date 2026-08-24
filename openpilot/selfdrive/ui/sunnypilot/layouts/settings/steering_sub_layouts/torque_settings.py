@@ -113,6 +113,28 @@ class TorqueSettingsLayout(Widget):
       use_float_scaling=True
     )
 
+    # --- Horizon Dev: on-device max steer knob ---
+    # Overrides STEER_MAX (the count actuators.torque is scaled to). The panda hard-caps
+    # requested torque at 409, so this knob only takes effect at or below 409. To exceed it
+    # you must flash the panda .max_torque bump documented in HORIZON_DEV_MENU.md.
+    self._steer_max_toggle = toggle_item_sp(
+      param="HorizonSteerMaxEnabled",
+      title=lambda: tr("Max Steer Override (Horizon Dev)"),
+      description=lambda: tr("Live-adjust the maximum steer torque (STEER_MAX) without switching branches. " +
+                             "Stock/panda cap is 409; values above 409 require flashing the panda torque-cap bump " +
+                             "(see HORIZON_DEV_MENU.md) and should only be tested parked first. " +
+                             "Offroad-only; disable to return to stock."),
+    )
+    self._steer_max_value = option_item_sp(
+      title=lambda: tr("Max Steer (STEER_MAX)"),
+      param="HorizonSteerMax",
+      description="",
+      min_value=150,
+      max_value=409,
+      value_change_step=5,
+      label_callback=(lambda x: f"{x} (stock 409)"),
+    )
+
     items = [
       self._jerk_aware_toggle,
       self._torque_control_versions,
@@ -123,6 +145,8 @@ class TorqueSettingsLayout(Widget):
       self._torque_lat_accel_factor,
       self._torque_friction,
       self._torque_lat_accel_offset,
+      self._steer_max_toggle,
+      self._steer_max_value,
     ]
     return items
 
@@ -194,6 +218,12 @@ class TorqueSettingsLayout(Widget):
     self._torque_lat_accel_offset.set_description(
       f"{tr('Estimated')}: {offset:.2f} m/s^2" if offset is not None else not_cal)
     self._torque_control_versions.action_item.set_value(self._get_current_torque_version_label())
+
+    # Horizon Dev max steer knob: offroad-only toggle; value stepper only visible when enabled.
+    self._steer_max_toggle.action_item.set_enabled(ui_state.is_offroad())
+    steer_max_enabled = self._steer_max_toggle.action_item.get_state()
+    self._steer_max_value.set_visible(steer_max_enabled)
+    self._steer_max_value.action_item.set_enabled(ui_state.is_offroad())
 
   def _render(self, rect):
     self._back_button.set_position(self._rect.x, self._rect.y + 20)
