@@ -120,17 +120,16 @@ class TorqueSettingsLayout(Widget):
     self._steer_max_toggle = toggle_item_sp(
       param="HorizonSteerMaxEnabled",
       title=lambda: tr("Max Steer Override (Horizon Dev)"),
-      description=lambda: tr("Live-adjust the maximum steer torque (STEER_MAX) without switching branches. " +
-                             "Stock/panda cap is 409; values above 409 require flashing the panda torque-cap bump " +
-                             "(see HORIZON_DEV_MENU.md) and should only be tested parked first. " +
-                             "Offroad-only; disable to return to stock."),
+      description=lambda: tr("Live-adjust the maximum steer torque (STEER_MAX). Stock is 409. This branch raises " +
+                             "the panda cap to 500 (reflashes on boot), so 410-500 is testable — PARKED FIRST, " +
+                             "watch for a panda fault. Offroad-only; disable to return to stock 409 behavior."),
     )
     self._steer_max_value = option_item_sp(
       title=lambda: tr("Max Steer (STEER_MAX)"),
       param="HorizonSteerMax",
       description="",
       min_value=150,
-      max_value=409,
+      max_value=500,  # panda cap raised to 500 for testing (HORIZON_DEV_MENU.md §A)
       value_change_step=5,
       label_callback=(lambda x: f"{x} (stock 409)"),
     )
