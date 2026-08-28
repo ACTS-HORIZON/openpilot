@@ -8,7 +8,12 @@ class LatControl(ABC):
     self.dt = dt
     self.sat_limit = CP.steerLimitTimer
     self.sat_time = 0.
-    self.sat_check_min_speed = 10.
+    # BUGFIX(GV60 campaign): stock gate of 10 m/s (22 mph) silences the
+    # "Turn Exceeds Steering Limit" alert exactly where low-speed authority
+    # (~2.1 m/s^2 at 18 mph) is most easily exceeded. Route 0000089 seg 8:
+    # 2 s pinned at full torque, understeering, zero warning. Keep a small
+    # gate so parking-lot full-lock doesn't chime.
+    self.sat_check_min_speed = 3.
 
     # we define the steer torque scale as [-1.0...1.0]
     self.steer_max = 1.0

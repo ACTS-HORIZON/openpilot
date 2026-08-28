@@ -27,7 +27,13 @@ _TURNING_LAT_ACC_TH = 1.6  # Lat Acc threshold to trigger turning state.
 _LEAVING_LAT_ACC_TH = 1.3  # Lat Acc threshold to trigger leaving turn state.
 _FINISH_LAT_ACC_TH = 1.1  # Lat Acc threshold to trigger the end of the turn cycle.
 
-_A_LAT_REG_MAX = 2.  # Maximum lateral acceleration
+# GV60 (measured): target lateral acceleration for curve speed, by speed.
+# The flat stock value of 2.0 is ~40% below the car's measured comfortable/achievable
+# envelope above 25 mph (authority ~3.5 m/s^2 there) while sitting right AT the
+# low-speed authority ceiling (~2.1 m/s^2 at 18 mph). Values carry ~10-15% margin
+# plus an allowance for adverse road crown.
+_A_LAT_REG_BP = [5., 9., 13., 17., 25.]    # m/s
+_A_LAT_REG_V = [1.9, 2.3, 2.8, 3.0, 3.1]   # m/s^2
 
 _NO_OVERSHOOT_TIME_HORIZON = 4.  # s. Time to use for velocity desired based on a_target when not overshooting.
 
@@ -39,7 +45,9 @@ _ENTERING_SMOOTH_DECEL_BP = [1.3, 3.]  # absolute value of lat acc ahead
 # Lookup table for the acceleration for the TURNING state
 # depending on the current lateral acceleration of the vehicle.
 _TURNING_ACC_V = [0.5, 0., -0.4]  # acc value
-_TURNING_ACC_BP = [1.5, 2.3, 3.]  # absolute value of current lat acc
+# Shifted up to match the raised regulation targets above — otherwise the
+# TURNING state brakes mid-corner at lateral accels the new target allows.
+_TURNING_ACC_BP = [2.0, 2.8, 3.4]  # absolute value of current lat acc
 
 _LEAVING_ACC = 0.5  # Conformable acceleration to regain speed while leaving a turn.
 
@@ -96,8 +104,15 @@ class SmartCruiseControlVision:
       v_ego = max(self.v_ego, 0.1)  # ensure a value greater than 0 for calculations
       max_curve = self.max_pred_lat_acc / (v_ego**2)
 
-      # Get the target velocity for the maximum curve
-      self.v_target = (_A_LAT_REG_MAX / max_curve) ** 0.5
+      # Get the target velocity for the maximum curve. The allowed lateral
+      # acceleration depends on the speed we'll actually carry through the
+      # curve, so solve v = sqrt(A(v)/k) by fixed-point iteration
+      # (A(v) is monotone and shallow; converges in 2-3 steps).
+      v_t = v_ego
+      for _ in range(3):
+        a_lat_max = np.interp(v_t, _A_LAT_REG_BP, _A_LAT_REG_V)
+        v_t = (a_lat_max / max_curve) ** 0.5
+      self.v_target = v_t
 
   def _update_state_machine(self) -> tuple[bool, bool]:
     # ENABLED, ENTERING, TURNING, LEAVING, OVERRIDING
