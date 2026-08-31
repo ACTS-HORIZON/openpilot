@@ -210,6 +210,33 @@ sections:
         key: SpeedLimitOffsetType
         op: '>'
         value: 0
+    - key: SpeedLimitMaxSpeedEnabled
+      widget: toggle
+      title: Maximum Speed
+      description: Caps the speed Speed Limit Assist will set. When the speed limit
+        (plus offset) is above this value, Speed Limit Assist sets this value instead.
+        Useful to avoid the efficiency penalty of high speeds. The value is in the
+        currently selected unit.
+      visibility:
+      - type: param
+        key: SpeedLimitMode
+        equals: 3
+    - key: SpeedLimitMaxSpeed
+      widget: option
+      title: Maximum Speed Value
+      min: 20
+      max: 145
+      step: 1
+      unit:
+        metric: km/h
+        imperial: mph
+      visibility:
+      - type: param
+        key: SpeedLimitMode
+        equals: 3
+      - type: param
+        key: SpeedLimitMaxSpeedEnabled
+        equals: true
 - id: smart_cruise
   title: Smart Cruise Control
   description: ''

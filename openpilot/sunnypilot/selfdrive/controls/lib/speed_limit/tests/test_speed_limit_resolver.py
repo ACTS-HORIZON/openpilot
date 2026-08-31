@@ -10,10 +10,12 @@ import time
 from openpilot.common.parameterized import parameterized
 
 from openpilot.cereal import custom
+from openpilot.common.constants import CV
+from openpilot.common.params import Params
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import LIMIT_MAX_MAP_DATA_AGE
 
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.speed_limit_resolver import SpeedLimitResolver, ALL_SOURCES
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Policy
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode, Policy, OffsetType
 from openpilot.common.test import OpenpilotTestCase
 
 SpeedLimitSource = custom.LongitudinalPlanSP.SpeedLimit.Source
@@ -145,3 +147,66 @@ class TestSpeedLimitResolverValidation(OpenpilotTestCase):
     resolver._get_from_map_data(sm_mock)
     assert resolver.limit_solutions[SpeedLimitSource.map] == 0.
     assert resolver.distance_solutions[SpeedLimitSource.map] == 0.
+
+
+class TestSpeedLimitMaxSpeed(OpenpilotTestCase):
+  """The maximum speed caps the target derived from the speed limit, so roads posted higher are driven at the maximum."""
+
+  def setup_method(self):
+    self.params = Params()
+    self.params.put_bool("IsMetric", False, block=True)
+    self.params.put("SpeedLimitMode", int(Mode.assist), block=True)
+    self.params.put("SpeedLimitOffsetType", int(OffsetType.off), block=True)
+    self.params.put("SpeedLimitValueOffset", 0, block=True)
+    self.params.put_bool("SpeedLimitMaxSpeedEnabled", True, block=True)
+    self.params.put("SpeedLimitMaxSpeed", 73, block=True)
+
+  def _resolver(self, resolver_class, speed_limit_mph):
+    resolver = resolver_class()
+    resolver.speed_limit = speed_limit_mph * CV.MPH_TO_MS
+    resolver.speed_limit_offset = resolver._get_speed_limit_offset()
+    resolver.update_speed_limit_states()
+    return resolver
+
+  def test_speed_limit_above_max_is_capped(self, resolver_class):
+    resolver = self._resolver(resolver_class, 80)
+    assert round(resolver.speed_limit_final * CV.MS_TO_MPH) == 73
+    assert round(resolver.speed_limit_final_last * CV.MS_TO_MPH) == 73
+    # the speed limit itself is untouched, only the target we drive to
+    assert round(resolver.speed_limit * CV.MS_TO_MPH) == 80
+    assert round(resolver.speed_limit_last * CV.MS_TO_MPH) == 80
+    # the reported offset reflects what is actually applied
+    assert round(resolver.speed_limit_offset * CV.MS_TO_MPH) == -7
+
+  def test_speed_limit_below_max_is_untouched(self, resolver_class):
+    resolver = self._resolver(resolver_class, 55)
+    assert round(resolver.speed_limit_final * CV.MS_TO_MPH) == 55
+    assert resolver.speed_limit_offset == 0.
+
+  def test_offset_is_applied_before_the_cap(self, resolver_class):
+    self.params.put("SpeedLimitOffsetType", int(OffsetType.fixed), block=True)
+    self.params.put("SpeedLimitValueOffset", 5, block=True)
+
+    # 65 + 5 = 70, still under the maximum
+    assert round(self._resolver(resolver_class, 65).speed_limit_final * CV.MS_TO_MPH) == 70
+    # 70 + 5 = 75, capped back down to the maximum
+    assert round(self._resolver(resolver_class, 70).speed_limit_final * CV.MS_TO_MPH) == 73
+
+  def test_disabled_toggle_does_not_cap(self, resolver_class):
+    self.params.put_bool("SpeedLimitMaxSpeedEnabled", False, block=True)
+    assert round(self._resolver(resolver_class, 80).speed_limit_final * CV.MS_TO_MPH) == 80
+
+  @parameterized.expand([Mode.off, Mode.information, Mode.warning], names=["mode"])
+  def test_only_applies_in_assist_mode(self, resolver_class, mode):
+    self.params.put("SpeedLimitMode", int(mode), block=True)
+    assert round(self._resolver(resolver_class, 80).speed_limit_final * CV.MS_TO_MPH) == 80
+
+  def test_metric_value_is_read_in_km_h(self, resolver_class):
+    self.params.put_bool("IsMetric", True, block=True)
+    self.params.put("SpeedLimitMaxSpeed", 110, block=True)
+
+    resolver = resolver_class()
+    resolver.speed_limit = 130 * CV.KPH_TO_MS
+    resolver.speed_limit_offset = resolver._get_speed_limit_offset()
+    resolver.update_speed_limit_states()
+    assert round(resolver.speed_limit_final * CV.MS_TO_KPH) == 110

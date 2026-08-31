@@ -14,7 +14,8 @@ from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode 
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import OffsetType as SpeedLimitOffsetType
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.sunnypilot.widgets import get_highlighted_description
-from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, option_item_sp, simple_button_item_sp, LineSeparatorSP
+from openpilot.system.ui.sunnypilot.widgets.list_view import multiple_button_item_sp, option_item_sp, simple_button_item_sp, \
+  toggle_item_sp, LineSeparatorSP
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.widgets.network import NavButton
 from openpilot.system.ui.widgets.scroller_tici import Scroller
@@ -34,6 +35,10 @@ SPEED_LIMIT_OFFSET_DESCRIPTIONS = [
   tr("Fixed: Adds a fixed offset [Speed Limit + Offset]"),
   tr("Percent: Adds a percent offset [Speed Limit + (Offset % Speed Limit)]"),
 ]
+
+# Selectable range for the Speed Limit Assist maximum speed, in the currently selected unit
+MAX_SPEED_MIN = 20
+MAX_SPEED_MAX = 145
 
 
 class PanelType(IntEnum):
@@ -86,13 +91,34 @@ class SpeedLimitSettingsLayout(Widget):
       label_callback=self._get_offset_label,
     )
 
+    self._max_speed_separator = LineSeparatorSP(40)
+
+    self._max_speed_toggle = toggle_item_sp(
+      title=lambda: tr("Maximum Speed"),
+      description=lambda: tr("Caps the speed Speed Limit Assist will set. When the speed limit (plus offset) is above this value, " +
+                             "Speed Limit Assist sets this value instead. Useful to avoid the efficiency penalty of high speeds. " +
+                             "The value is in the currently selected unit."),
+      param="SpeedLimitMaxSpeedEnabled",
+    )
+
+    self._max_speed_value = option_item_sp(
+      title="",
+      param="SpeedLimitMaxSpeed",
+      min_value=MAX_SPEED_MIN,
+      max_value=MAX_SPEED_MAX,
+      label_callback=self._get_max_speed_label,
+    )
+
     items = [
       self._speed_limit_mode,
       LineSeparatorSP(40),
       self._source_button,
       LineSeparatorSP(40),
       self._speed_limit_offset_type,
-      self._speed_limit_value_offset
+      self._speed_limit_value_offset,
+      self._max_speed_separator,
+      self._max_speed_toggle,
+      self._max_speed_value,
     ]
     return items
 
@@ -108,6 +134,11 @@ class SpeedLimitSettingsLayout(Widget):
   @staticmethod
   def _get_offset_description():
     return get_highlighted_description(ui_state.params, "SpeedLimitOffsetType", SPEED_LIMIT_OFFSET_DESCRIPTIONS)
+
+  @staticmethod
+  def _get_max_speed_label(value):
+    unit = tr("km/h") if ui_state.is_metric else tr("mph")
+    return f"{value} {unit}"
 
   @staticmethod
   def _get_offset_label(value):
@@ -157,6 +188,12 @@ class SpeedLimitSettingsLayout(Widget):
     offset_type = ui_state.params.get("SpeedLimitOffsetType", return_default=True)
     self._speed_limit_value_offset.set_visible(offset_type != int(SpeedLimitOffsetType.off))
 
+    # the maximum speed only caps what Speed Limit Assist sets, so it is irrelevant in the other modes
+    max_speed_relevant = sla_available and speed_limit_mode_param == int(SpeedLimitMode.assist)
+    self._max_speed_separator.set_visible(max_speed_relevant)
+    self._max_speed_toggle.set_visible(max_speed_relevant)
+    self._max_speed_value.set_visible(max_speed_relevant and ui_state.params.get_bool("SpeedLimitMaxSpeedEnabled"))
+
   def _render(self, rect):
     if self._current_panel == PanelType.POLICY:
       self._policy_layout.render(rect)
@@ -172,6 +209,7 @@ class SpeedLimitSettingsLayout(Widget):
     self._current_panel = PanelType.SETTINGS
     self._scroller.show_event()
     self._speed_limit_mode.show_description(True)
+    self._max_speed_toggle.show_description(True)
 
   def hide_event(self):
     self._current_panel = PanelType.SETTINGS

@@ -14,7 +14,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import DT_MDL
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD, get_sanitize_int_param
 from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit import LIMIT_MAX_MAP_DATA_AGE, LIMIT_ADAPT_ACC
-from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Policy, OffsetType
+from openpilot.sunnypilot.selfdrive.controls.lib.speed_limit.common import Mode, Policy, OffsetType
 
 SpeedLimitSource = custom.LongitudinalPlanSP.SpeedLimit.Source
 
@@ -67,6 +67,9 @@ class SpeedLimitResolver:
       self.params
     )
     self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
+    self.mode = self.params.get("SpeedLimitMode", return_default=True)
+    self.max_speed_enabled = self.params.get_bool("SpeedLimitMaxSpeedEnabled")
+    self.max_speed_value = self.params.get("SpeedLimitMaxSpeed", return_default=True)
 
     self.speed_limit = 0.
     self.speed_limit_last = 0.
@@ -77,9 +80,25 @@ class SpeedLimitResolver:
   def update_speed_limit_states(self) -> None:
     self.speed_limit_final = self.speed_limit + self.speed_limit_offset
 
+    # Never target a speed above the user's maximum, so roads posted higher are driven at the maximum instead
+    max_speed = self.max_speed
+    if 0. < max_speed < self.speed_limit_final:
+      self.speed_limit_final = max_speed
+      # report the offset actually being applied so the UI reflects the capped target
+      if self.speed_limit > 0.:
+        self.speed_limit_offset = self.speed_limit_final - self.speed_limit
+
     if self.speed_limit > 0.:
       self.speed_limit_last = self.speed_limit
       self.speed_limit_final_last = self.speed_limit_final
+
+  @property
+  def max_speed(self) -> float:
+    """User configured maximum speed for Speed Limit Assist, in m/s. 0. when not applicable."""
+    if not self.max_speed_enabled or self.mode != Mode.assist:
+      return 0.
+
+    return float(self.max_speed_value) * (CV.KPH_TO_MS if self.is_metric else CV.MPH_TO_MS)
 
   @property
   def speed_limit_valid(self) -> bool:
@@ -95,6 +114,9 @@ class SpeedLimitResolver:
       self.is_metric = self.params.get_bool("IsMetric")
       self.offset_type = self.params.get("SpeedLimitOffsetType", return_default=True)
       self.offset_value = self.params.get("SpeedLimitValueOffset", return_default=True)
+      self.mode = self.params.get("SpeedLimitMode", return_default=True)
+      self.max_speed_enabled = self.params.get_bool("SpeedLimitMaxSpeedEnabled")
+      self.max_speed_value = self.params.get("SpeedLimitMaxSpeed", return_default=True)
 
   def _get_speed_limit_offset(self) -> float:
     if self.offset_type == OffsetType.off:
