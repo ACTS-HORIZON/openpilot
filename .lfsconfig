@@ -1,9 +1,10 @@
 [lfs]
-	url = https://gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git/info/lfs
-	pushurl = ssh://git@gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git
+	url = https://huggingface.co/sunnypilot/sunnypilot-lfs.git/info/lfs
+	pushurl = https://huggingface.co/sunnypilot/sunnypilot-lfs.git/info/lfs
+
 	locksverify = false
-	# big_driving_supercombo.onnx (1.7 GB) is only used for USB GPU / BIG_INTO_SMALL
-	# builds, never on the comma device. Skip it by default so device installs
+	# big_driving_tinygrad.pkl (~780 MB) is the precompiled eGPU (chestnut) model,
+	# never used on a comma device without one. Skip it by default so device installs
 	# don't stall on the download; fetch it explicitly when needed with:
-	#   git lfs pull --include="openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx"
-	fetchexclude = openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx
+	#   git lfs pull --include="openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl"
+	fetchexclude = openpilot/selfdrive/modeld/models/big_driving_tinygrad.pkl

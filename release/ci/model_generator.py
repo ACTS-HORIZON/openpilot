@@ -91,7 +91,7 @@ def _rename_pkl_with_chunks(old_pkl: Path, new_pkl: Path) -> Path:
 
 
 def _hash_onnx_files(model_dir: Path) -> str | None:
-  onnx_files = sorted(model_dir.glob("*.onnx"))
+  onnx_files = [f for f in sorted(model_dir.glob("*.onnx")) if f.stat().st_size > 1024]
   if not onnx_files:
     return None
   digest = hashlib.sha256()
@@ -136,7 +136,7 @@ def generate_chunked_model(driving_pkl: Path) -> dict:
 
 
 def create_metadata_json(models: list, output_dir: Path, custom_name=None, short_name=None, is_20hz=False, upstream_branch="unknown",
-                         onnx_sha256=None) -> None:
+                         onnx_sha256=None, is_big=False) -> None:
   bundle_json = {
     "short_name": short_name,
     "display_name": custom_name or upstream_branch,
@@ -149,6 +149,7 @@ def create_metadata_json(models: list, output_dir: Path, custom_name=None, short
     "generation": "-1",
     "build_time": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "overrides": {},
+    "is_big": is_big,
     "models": models,
   }
 
@@ -174,6 +175,7 @@ if __name__ == "__main__":
   parser.add_argument("--custom-name", help="Custom display name for the model")
   parser.add_argument("--is-20hz", action="store_true", help="Whether this is a 20Hz model")
   parser.add_argument("--upstream-branch", default="unknown", help="Upstream branch name")
+  parser.add_argument("--onnx-sha256", default=None, help="Pre-computed LFS SHA256 for the model file (used when no ONNX is present)")
   args = parser.parse_args()
 
   _output_dir = Path(args.output_dir)
@@ -186,6 +188,8 @@ if __name__ == "__main__":
     print(f"No driving_tinygrad.pkl found in {_output_dir}", file=sys.stderr)
     sys.exit(1)
 
+  is_big = _driving_pkl.name.startswith('big_')
+
   if _pkl:
     new_pkl = _output_dir / f"driving_{_pkl}_tinygrad.pkl"
     if not new_pkl.exists():
@@ -194,6 +198,6 @@ if __name__ == "__main__":
       _driving_pkl = new_pkl
 
   _model_metadata = generate_chunked_model(_driving_pkl)
-  _onnx_sha256 = _hash_onnx_files(Path(args.model_dir))
+  _onnx_sha256 = args.onnx_sha256 or _hash_onnx_files(Path(args.model_dir))
   create_metadata_json([_model_metadata], _output_dir, args.custom_name, _short_name, args.is_20hz, args.upstream_branch,
-                       onnx_sha256=_onnx_sha256)
+                       onnx_sha256=_onnx_sha256, is_big=is_big)
