@@ -24,6 +24,7 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_to_cap
 
 from openpilot.sunnypilot.mads.helpers import set_alternative_experience, set_car_specific_params
 from openpilot.sunnypilot.selfdrive.car import interfaces as sunnypilot_interfaces
+from openpilot.sunnypilot.selfdrive.car.hyundai_precond import PrecondRequester
 
 REPLAY = "REPLAY" in os.environ
 
@@ -177,6 +178,10 @@ class Car:
 
     self.v_cruise_helper = VCruiseHelper(self.CP, self.CP_SP)
 
+    # horizonpilot: battery preconditioning request, driven by the HyundaiPrecondCmd param
+    self.precond = PrecondRequester(self.CP, self.CP_SP)
+    self.precond_cmd: str | None = None
+
     self.is_metric = self.params.get_bool("IsMetric")
     self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
 
@@ -275,6 +280,13 @@ class Car:
       # send car controls over can
       now_nanos = self.can_log_mono_time if REPLAY else int(time.monotonic() * 1e9)
       self.last_actuators_output, can_sends = self.CI.apply(CC, convert_carControlSP(CC_SP), now_nanos)
+
+      # horizonpilot: battery preconditioning request burst
+      precond_cmd, self.precond_cmd = self.precond_cmd, None
+      if precond_cmd is not None:
+        accepted = self.precond.command(precond_cmd, now_nanos)
+        cloudlog.event("precond command", cmd=precond_cmd, accepted=accepted, available=self.precond.available)
+      can_sends = can_sends + self.precond.update(now_nanos)
       self.pm.send('sendcan', can_list_to_can_capnp(can_sends, msgtype='sendcan', valid=CS.canValid))
 
       self.CC_prev = CC
@@ -300,6 +312,13 @@ class Car:
 
       # sunnypilot
       self.v_cruise_helper.read_custom_set_speed_params()
+
+      # horizonpilot: one-shot preconditioning command, consumed here
+      if self.precond.available:
+        precond_cmd = self.params.get("HyundaiPrecondCmd")
+        if precond_cmd:
+          self.params.remove("HyundaiPrecondCmd")
+          self.precond_cmd = precond_cmd.strip().lower()
 
       time.sleep(0.1)
 
