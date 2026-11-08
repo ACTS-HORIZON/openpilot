@@ -213,7 +213,6 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   # ********** events with no alerts **********
 
   EventName.noGps: {},
-  EventName.stockFcw: {},
   EventName.actuatorsApiUnavailable: {},
 
   # ********** events only containing alerts displayed in all states **********
@@ -309,6 +308,15 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       AlertStatus.critical, AlertSize.full,
       Priority.HIGHEST, VisualAlert.fcw, AudibleAlert.none, 2.),
     ET.NO_ENTRY: NoEntryAlert("Stock AEB: Risk of Collision"),
+  },
+
+  # the car chimes itself, so no audible alert
+  EventName.stockFcw: {
+    ET.PERMANENT: Alert(
+      "BRAKE!",
+      "Stock FCA: Risk of Collision",
+      AlertStatus.critical, AlertSize.full,
+      Priority.HIGHEST, VisualAlert.fcw, AudibleAlert.none, 2.),
   },
 
   EventName.stockLkas: {
