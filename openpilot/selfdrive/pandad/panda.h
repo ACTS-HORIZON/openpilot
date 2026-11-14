@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <ctime>
 #include <functional>
+#include <atomic>
 #include <list>
 #include <memory>
 #include <optional>
@@ -84,6 +85,14 @@ public:
   void can_send(const capnp::List<cereal::CanData>::Reader &can_data_list);
   bool can_receive(std::vector<can_frame>& out_vec);
   void can_reset_communications();
+
+  // horizonpilot: GV60 battery preconditioning test.
+  // When set, bus 0 frames carry an explicit FD flag: 0xC7 (8 bytes) goes out as classic CAN, every other
+  // frame as CAN-FD, same as canfd_auto sends them today. Only takes effect with canfd_auto off on bus 0.
+  std::atomic<bool> precond_classic_bus0{false};
+  // FD flag of the last 0xC7 frame seen on bus 0: received from the car, and our own (panda TX echo). -1 = none yet
+  std::atomic<int> precond_car_fd{-1};
+  std::atomic<int> precond_ours_fd{-1};
 
 protected:
   // for unit tests

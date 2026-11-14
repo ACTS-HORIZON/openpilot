@@ -373,6 +373,48 @@ void process_peripheral_state(Panda *panda, PubMaster *pm, bool no_fan_control, 
   }
 }
 
+// horizonpilot: GV60 battery preconditioning test (see Panda::precond_classic_bus0).
+// HyundaiPrecondClassicCan switches bus 0 to "0xC7 as classic CAN". Switching on takes two 2 Hz ticks: first every
+// frame we pack gets an explicit FD flag, then canfd_auto goes off, so nothing packed before the change can go out
+// with the wrong format. Mode changes only happen while openpilot isn't engaged.
+// The 0xC7 frame formats seen on the wire are published in HyundaiPrecondFrameFormat for the UI.
+void process_precond_test(Panda *panda, bool engaged) {
+  static Params params;
+  static bool auto_off = false;
+  static int prev_car_fd = -2, prev_ours_fd = -2;
+  static bool prev_classic = false;
+
+  const bool want_classic = params.getBool("HyundaiPrecondClassicCan");
+  if (!engaged) {
+    if (want_classic && !panda->precond_classic_bus0) {
+      panda->precond_classic_bus0 = true;
+    } else if (want_classic && !auto_off) {
+      panda->set_can_fd_auto(0, false);
+      auto_off = true;
+      LOGW("precond: bus 0 now sends 0xC7 as classic CAN");
+    } else if (!want_classic && (auto_off || panda->precond_classic_bus0)) {
+      panda->set_can_fd_auto(0, true);
+      auto_off = false;
+      panda->precond_classic_bus0 = false;
+      LOGW("precond: bus 0 back to canfd_auto");
+    }
+  }
+
+  const int car_fd = panda->precond_car_fd;
+  const int ours_fd = panda->precond_ours_fd;
+  if (car_fd != prev_car_fd || ours_fd != prev_ours_fd || auto_off != prev_classic) {
+    auto fmt = [](int fd) { return fd < 0 ? std::string("null") : (fd ? std::string("\"fd\"") : std::string("\"classic\"")); };
+    params.put("HyundaiPrecondFrameFormat", "{\"car\": " + fmt(car_fd) + ", \"ours\": " + fmt(ours_fd) +
+                                            ", \"classic_mode\": " + (auto_off ? "true" : "false") + "}");
+    if (car_fd != prev_car_fd || ours_fd != prev_ours_fd) {
+      LOGW("precond: 0xC7 frame format car=%d ours=%d (1 = CAN-FD, 0 = classic, -1 = none)", car_fd, ours_fd);
+    }
+    prev_car_fd = car_fd;
+    prev_ours_fd = ours_fd;
+    prev_classic = auto_off;
+  }
+}
+
 void pandad_run(Panda *panda) {
   const bool no_fan_control = getenv("NO_FAN_CONTROL") != nullptr;
   const bool spoofing_started = getenv("STARTED") != nullptr;
@@ -415,6 +457,7 @@ void pandad_run(Panda *panda) {
     // Send out peripheralState at 2Hz
     if (rk.frame() % 50 == 0) {
       send_peripheral_state(panda, &pm);
+      process_precond_test(panda, engaged || engaged_mads);
     }
 
     // Forward logs from panda to cloudlog if available

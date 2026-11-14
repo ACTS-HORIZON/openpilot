@@ -110,6 +110,62 @@ void test_can_protocol() {
   }
 }
 
+// horizonpilot: GV60 preconditioning test mode. With precond_classic_bus0 set, bus 0 frames carry an explicit FD flag:
+// 0xC7 classic, everything else CAN-FD. Other buses and the default mode leave the flag clear. unpack_can_buffer
+// records the flag of 0xC7 frames on bus 0, separately for received frames and our own TX echoes.
+struct PrecondTest : public Panda {
+  void run() {
+    struct Frame { uint32_t addr; uint8_t bus; uint8_t len; };
+    const std::vector<Frame> frames = {{0xC7, 0, 8}, {0x2AA, 0, 32}, {0x1CF, 0, 8}, {0xC7, 2, 8}, {0x12A, 1, 16}};
+    MessageBuilder msg;
+    auto can_list = msg.initEvent().initSendcan(frames.size());
+    for (size_t i = 0; i < frames.size(); ++i) {
+      std::string dat(frames[i].len, '\x01');
+      can_list[i].setAddress(frames[i].addr);
+      can_list[i].setSrc(frames[i].bus);
+      can_list[i].setDat(kj::ArrayPtr((uint8_t *)dat.data(), dat.size()));
+    }
+
+    for (bool classic : {false, true}) {
+      precond_classic_bus0 = classic;
+      std::vector<uint8_t> packed;
+      pack_can_buffer(can_list.asReader(), [&](uint8_t *chunk, size_t size) { packed.insert(packed.end(), chunk, &chunk[size]); });
+
+      std::vector<bool> fd;
+      for (size_t pos = 0; pos < packed.size(); pos += sizeof(can_header) + dlc_to_len[((can_header *)&packed[pos])->data_len_code]) {
+        fd.push_back(((can_header *)&packed[pos])->reserved);
+      }
+      const std::vector<bool> expected = classic ? std::vector<bool>{false, true, true, false, false} : std::vector<bool>(5, false);
+      CHECK(fd == expected);
+    }
+
+    // receive side: car's 0xC7 as classic, our echo as CAN-FD, a rejected frame ignored, 0xC7 on bus 2 ignored
+    CHECK(precond_car_fd == -1);
+    CHECK(precond_ours_fd == -1);
+    auto rx = [&](uint8_t bus, bool fd_bit, bool returned, bool rejected) {
+      uint8_t buf[sizeof(can_header) + 8] = {};
+      can_header h = {};
+      h.reserved = fd_bit; h.bus = bus; h.data_len_code = 8; h.returned = returned; h.rejected = rejected; h.addr = 0xC7;
+      memcpy(buf, &h, sizeof(h));
+      ((can_header *)buf)->checksum = calculate_checksum(buf, sizeof(buf));
+      uint32_t size = sizeof(buf);
+      std::vector<can_frame> out;
+      CHECK(unpack_can_buffer(buf, size, out));
+      CHECK(out.size() == 1);
+    };
+    rx(0, false, false, false);
+    rx(0, true, true, false);
+    CHECK(precond_car_fd == 0);
+    CHECK(precond_ours_fd == 1);
+    rx(0, true, false, true);   // rejected: not recorded
+    rx(2, true, false, false);  // other bus: not recorded
+    CHECK(precond_car_fd == 0);
+  }
+};
+
 int main() {
-  return run_native_test(test_can_protocol);
+  return run_native_test([] {
+    test_can_protocol();
+    PrecondTest().run();
+  });
 }

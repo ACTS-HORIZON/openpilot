@@ -186,6 +186,8 @@ void Panda::pack_can_buffer(const capnp::List<cereal::CanData>::Reader &can_data
     header.extended = (cmsg.getAddress() >= 0x800) ? 1 : 0;
     header.data_len_code = data_len_code;
     header.bus = bus;
+    // horizonpilot: per-frame FD flag (the panda's "fd" bit), only used in the classic-0xC7 test mode
+    header.reserved = (precond_classic_bus0 && bus == 0) ? !(header.addr == 0xC7 && can_data.size() <= 8) : 0;
     header.checksum = 0;
 
     memcpy(&send_buf[pos], (uint8_t *)&header, sizeof(can_header));
@@ -262,6 +264,11 @@ bool Panda::unpack_can_buffer(uint8_t *data, uint32_t &size, std::vector<can_fra
     can_frame &canData = out_vec.emplace_back();
     canData.address = header.addr;
     canData.src = header.bus;
+
+    // horizonpilot: remember whether 0xC7 on bus 0 was classic or CAN-FD (the rlog doesn't keep this bit)
+    if (header.addr == 0xC7 && header.bus == 0 && !header.rejected) {
+      (header.returned ? precond_ours_fd : precond_car_fd) = header.reserved;
+    }
     if (header.rejected) {
       canData.src += CAN_REJECTED_BUS_OFFSET;
     }

@@ -244,6 +244,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"HyundaiLongitudinalTuning", {PERSISTENT | BACKUP, INT, "0"}},
     {"HyundaiPrecondCmd", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION | CLEAR_ON_OFFROAD_TRANSITION, STRING}},  // horizonpilot: "start" / "cancel"
     {"HyundaiPrecondStatus", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION | CLEAR_ON_OFFROAD_TRANSITION, JSON}},  // horizonpilot: written by card
+    {"HyundaiPrecondClassicCan", {CLEAR_ON_MANAGER_START, BOOL}},  // horizonpilot: send 0xC7 on bus 0 as classic CAN (pandad)
+    {"HyundaiPrecondFrameFormat", {CLEAR_ON_MANAGER_START, JSON}},  // horizonpilot: 0xC7 frame formats seen by pandad
     {"SubaruStopAndGo", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"SubaruStopAndGoManualParkingBrake", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TeslaCoopSteering", {PERSISTENT | BACKUP, BOOL, "0"}},

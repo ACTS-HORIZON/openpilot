@@ -9,7 +9,7 @@ import time
 from openpilot.selfdrive.ui.sunnypilot.layouts.settings.vehicle.brands.base import BrandSettings
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.sunnypilot.widgets.list_view import ListItemSP, dual_button_item_sp, multiple_button_item_sp
+from openpilot.system.ui.sunnypilot.widgets.list_view import ListItemSP, dual_button_item_sp, multiple_button_item_sp, toggle_item_sp
 from opendbc.car.hyundai.values import CAR, UNSUPPORTED_LONGITUDINAL_CAR
 
 
@@ -25,6 +25,7 @@ class HyundaiSettings(BrandSettings):
     # horizonpilot: battery preconditioning test (GV60). card sends the request and writes HyundaiPrecondStatus
     self.precond_available = False
     self.precond_status: dict | None = None
+    self.precond_frame_format: dict | None = None
     self.precond_status_read_t = 0.
     self.precond_status_item = ListItemSP(title=lambda: tr("Battery Preconditioning"), description=self._precond_description)
     self.precond_status_item.set_right_value(self._precond_right_value)
@@ -35,7 +36,13 @@ class HyundaiSettings(BrandSettings):
       right_callback=lambda: self._precond_command("cancel"),
     )
 
-    self.items = [self.longitudinal_tuning_item, self.precond_status_item, self.precond_buttons]
+    self.precond_classic_item = toggle_item_sp(
+      title=lambda: tr("Send Request as Classic CAN"),
+      description=self._precond_classic_description,
+      callback=lambda state: ui_state.params.put_bool("HyundaiPrecondClassicCan", state),
+    )
+
+    self.items = [self.longitudinal_tuning_item, self.precond_status_item, self.precond_buttons, self.precond_classic_item]
 
   def _precond_command(self, cmd: str):
     ui_state.params.put("HyundaiPrecondCmd", cmd)
@@ -91,6 +98,18 @@ class HyundaiSettings(BrandSettings):
       lines.append(tr("Head unit also sent {} request frames.").format(st.get("car_requests")))
     return "\n".join(lines)
 
+  def _precond_classic_description(self) -> str:
+    ff = self.precond_frame_format or {}
+    names = {"classic": tr("classic CAN"), "fd": tr("CAN-FD")}
+    lines = [
+      tr("Test: openpilot normally sends everything on this bus as CAN-FD. On: the 0xC7 request goes out as classic CAN."),
+      tr("Switches only while openpilot is not engaged, and turns off on reboot."),
+      tr("Mode: {}").format(tr("classic") if ff.get("classic_mode") else tr("CAN-FD (default)")),
+      tr("0xC7 seen on the wire: car (nav) = {}, ours = {}").format(names.get(ff.get("car"), tr("not seen yet")),
+                                                                    names.get(ff.get("ours"), tr("not seen yet"))),
+    ]
+    return "\n".join(lines)
+
   def _update_precond(self):
     platform = None
     if bundle := ui_state.params.get("CarPlatformBundle"):
@@ -102,10 +121,14 @@ class HyundaiSettings(BrandSettings):
     if self.precond_available and time.monotonic() - self.precond_status_read_t > 0.5:
       self.precond_status_read_t = time.monotonic()
       self.precond_status = None if ui_state.is_offroad() else ui_state.params.get("HyundaiPrecondStatus")
+      self.precond_frame_format = ui_state.params.get("HyundaiPrecondFrameFormat")
+      self.precond_classic_item.action_item.set_state(ui_state.params.get_bool("HyundaiPrecondClassicCan"))
 
     self.precond_status_item.set_visible(self.precond_available)
     self.precond_status_item.show_description(True)
     self.precond_buttons.set_visible(self.precond_available)
+    self.precond_classic_item.set_visible(self.precond_available)
+    self.precond_classic_item.show_description(True)
     precond_ready = self.precond_status is not None
     self.precond_buttons.action_item.left_button.set_enabled(precond_ready)
     self.precond_buttons.action_item.right_button.set_enabled(precond_ready)
