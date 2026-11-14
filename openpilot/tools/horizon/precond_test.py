@@ -2,10 +2,11 @@
 """
 GV60 battery preconditioning test: send the 0xC7 request on its own (no 0x4ED nav context) and watch the BMS.
 
+Same as the Start / Cancel buttons in Settings > Vehicle, but with a timestamped log.
 Run on the comma over SSH while the car is on and openpilot is onroad (panda in hyundaiCanfd safety):
 
   python -m openpilot.tools.horizon.precond_test monitor          # watch only
-  python -m openpilot.tools.horizon.precond_test start            # request, resend like nav does, then watch
+  python -m openpilot.tools.horizon.precond_test start            # request (card resends like nav does), then watch
   python -m openpilot.tools.horizon.precond_test cancel           # cancel burst, then watch
 
 What it prints (all bus 0, byte offsets are 0-based):
@@ -42,9 +43,7 @@ SIGNALS = [
 BUS = 0
 TX_ECHO_BUS = 128 + BUS
 
-# nav-like resend: up to 3 bursts, gaps taken from route 139 (103.3, 106.8, 113.3 s)
-RESEND_AT_S = (3.5, 10.0)
-PREPARING_TIMEOUT_S = 15.0
+PREPARING_TIMEOUT_S = 15.0  # card gives up (declined) after this; resends at +3.5 s and +10 s happen in card
 
 
 def frame_name(dat: bytes) -> str:
@@ -65,7 +64,6 @@ def open_csv():
 def main():
   ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
   ap.add_argument("action", choices=["monitor", "start", "cancel"])
-  ap.add_argument("--no-resend", action="store_true", help="start: send a single burst only")
   ap.add_argument("--duration", type=float, default=0, help="stop after N seconds (default: until Ctrl-C)")
   args = ap.parse_args()
 
@@ -97,23 +95,25 @@ def main():
     print("WARNING: no pandaStates; is openpilot running?", file=sys.stderr)
   tx_blocked0 = sm["pandaStates"][0].safetyTxBlocked if sm.seen["pandaStates"] and len(sm["pandaStates"]) else None
 
-  bursts_sent = 0
+  bursts_sent = 0  # bursts seen leaving the panda (TX echo), counted by gaps between frames
   burst_times: list[float] = []
+  last_echo_t = -1e9
+  cmd_t = None
 
   def send(cmd):
-    nonlocal bursts_sent
+    nonlocal cmd_t
     params.put("HyundaiPrecondCmd", cmd)
-    bursts_sent += 1
-    burst_times.append(time.monotonic() - t0)
-    log("cmd", cmd, f"(burst {bursts_sent})")
+    cmd_t = time.monotonic() - t0
+    log("cmd", cmd)
 
   if args.action in ("start", "cancel"):
     send(args.action)
 
   last: dict[str, int] = {}
-  echo_seen_for_burst = 0
   bms_reached = None
-  done_resending = args.action != "start" or args.no_resend
+  warned_no_echo = False
+  last_status_phase = None
+  last_status_read = 0.
 
   try:
     while True:
@@ -126,7 +126,11 @@ def main():
           if c.address == 0xC7 and c.src in (BUS, TX_ECHO_BUS):
             who = "ours" if c.src == TX_ECHO_BUS else "car"
             if who == "ours":
-              echo_seen_for_burst = bursts_sent
+              t_echo = time.monotonic() - t0
+              if t_echo - last_echo_t > 1.0:
+                bursts_sent += 1
+                burst_times.append(t_echo)
+              last_echo_t = t_echo
             log(f"0xC7 {who}", frame_name(c.dat))
             continue
           if c.src != BUS:
@@ -151,20 +155,22 @@ def main():
           log("txBlocked", blocked, "panda safety rejected a frame")
           tx_blocked0 = blocked
 
-      # TX sanity check one second after each burst
-      if bursts_sent and echo_seen_for_burst < bursts_sent and now - burst_times[-1] > 1.0:
-        log("WARN", "no TX echo for last burst", "(card not running / not onroad / panda blocked / old panda fw?)")
-        echo_seen_for_burst = bursts_sent
+      # TX sanity check one second after the command
+      if cmd_t is not None and not bursts_sent and not warned_no_echo and now - cmd_t > 1.0:
+        log("WARN", "no TX echo", "(card not running / not onroad / panda blocked / old panda fw?)")
+        warned_no_echo = True
 
-      # nav-like resends until the BMS reacts
-      if not done_resending:
-        if bms_reached is not None:
-          done_resending = True
-        elif bursts_sent <= len(RESEND_AT_S) and now - burst_times[0] >= RESEND_AT_S[bursts_sent - 1]:
-          send("start")
-        elif bursts_sent > len(RESEND_AT_S) and now - burst_times[0] > PREPARING_TIMEOUT_S:
-          log("RESULT", f"no Preparing within {PREPARING_TIMEOUT_S:.0f}s of first request (declined?)")
-          done_resending = True
+      # card's view (same thing the settings screen shows)
+      if now - last_status_read < 0.5:
+        continue
+      last_status_read = now
+      status = params.get("HyundaiPrecondStatus")
+      phase = status.get("phase") if status else None
+      if phase != last_status_phase:
+        last_status_phase = phase
+        log("card phase", phase)
+        if phase == "declined":
+          log("RESULT", f"no Preparing within {PREPARING_TIMEOUT_S:.0f}s of first request (declined)")
   except KeyboardInterrupt:
     pass
   finally:

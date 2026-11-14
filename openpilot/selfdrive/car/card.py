@@ -181,6 +181,8 @@ class Car:
     # horizonpilot: battery preconditioning request, driven by the HyundaiPrecondCmd param
     self.precond = PrecondRequester(self.CP, self.CP_SP)
     self.precond_cmd: str | None = None
+    self.precond_status_last_put = 0.
+    self.params.remove("HyundaiPrecondStatus")
 
     self.is_metric = self.params.get_bool("IsMetric")
     self.initial_cruise_speed = self.params.get("InitialCruiseSpeedKph", return_default=True)
@@ -193,6 +195,7 @@ class Car:
 
     can_strs = messaging.drain_sock_raw(self.can_sock, wait_for_one=True)
     can_list = can_capnp_to_list(can_strs)
+    self.precond.update_can(can_list)
 
     # Update carState from CAN
     CS, CS_SP = self.CI.update(can_list)
@@ -313,12 +316,18 @@ class Car:
       # sunnypilot
       self.v_cruise_helper.read_custom_set_speed_params()
 
-      # horizonpilot: one-shot preconditioning command, consumed here
+      # horizonpilot: one-shot preconditioning command, consumed here; status for the UI, on change or 1 Hz while active
       if self.precond.available:
         precond_cmd = self.params.get("HyundaiPrecondCmd")
         if precond_cmd:
           self.params.remove("HyundaiPrecondCmd")
           self.precond_cmd = precond_cmd.strip().lower()
+
+        now = time.monotonic()
+        active = self.precond.phase in ("requesting", "preparing", "on")
+        if self.precond.changed or (active and now - self.precond_status_last_put > 1.0):
+          self.params.put("HyundaiPrecondStatus", self.precond.status(int(now * 1e9)))
+          self.precond_status_last_put = now
 
       time.sleep(0.1)
 
