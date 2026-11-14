@@ -4,7 +4,7 @@ horizonpilot: battery preconditioning request for E-GMP (GV60).
 Replays the 0xC7 frame burst the head unit sends when navigating to a DC charger
 (GV60 route 00000139--d597be60c5): three request frames then three idle frames, ~40 ms apart.
 Like nav, a start resends the burst at +3.5 s and +10 s until the BMS reports Preparing or On.
-Cancel follows the Ioniq 5 M-CAN capture (tylerharvey/Ioniq5_CAN): two zero frames then three idle.
+Cancel matches what nav sent on GV60 route 000001c8--8fa07408a4: three zero frames then three idle.
 
 Triggered by writing the HyundaiPrecondCmd param ("start" or "cancel"), from the Vehicle settings
 buttons or tools/horizon/precond_test.py. card consumes it, sends the bursts and publishes what the
@@ -22,7 +22,7 @@ IDLE = bytes([0x00, 0x00, 0x00, 0xE0, 0x07, 0x00, 0x00, 0x00])
 
 BURSTS = {
   "start": [REQUEST] * 3 + [IDLE] * 3,
-  "cancel": [CANCEL] * 2 + [IDLE] * 3,
+  "cancel": [CANCEL] * 3 + [IDLE] * 3,
 }
 FRAME_GAP_NS = 40_000_000  # 40 ms, matches the head unit
 RESEND_AT_NS = (3_500_000_000, 10_000_000_000)  # nav on route 139: bursts at +0, +3.5, +10 s

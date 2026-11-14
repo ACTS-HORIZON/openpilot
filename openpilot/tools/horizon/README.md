@@ -12,7 +12,7 @@ preconditioning by itself, without the 0x4ED nav-context message?**
 - **card**: when the `HyundaiPrecondCmd` param is set to `start` or `cancel`, card clears it and sends:
   - start: request ×3 then idle ×3, 40 ms apart (what nav sent on route `00000139--d597be60c5`), resent at
     +3.5 s and +10 s like nav, until the BMS reports Preparing/On. No response after 15 s = declined.
-  - cancel: zeros ×2 then idle ×3 (Ioniq 5 M-CAN capture; never seen on the GV60)
+  - cancel: zeros ×3 then idle ×3 (what nav sent on the GV60, route `000001c8--8fa07408a4`)
 
   card also decodes the BMS state and temps and writes them to `HyundaiPrecondStatus`.
 - **Settings > Vehicle** (GV60 only): a Battery Preconditioning row with the live status, and Start / Cancel buttons.
@@ -53,3 +53,25 @@ If it's ignored, these are the next things to separate:
 - Gateway direction: on the GV60, 0xC7 comes from the head unit (M-CAN) and the gateway forwards it to
   bus 0. Nothing says the gateway forwards bus 0 → BMS. If cold-pack tests still fail, this is the likely
   blocker, and the request would have to go in on M-CAN (head-unit side), as tylerharvey/dragz do.
+
+## Result: route `000001c8--8fa07408a4` (2026-11-14, parked, pack 7–11 °C)
+
+**Sending 0xC7 on bus 0 from the comma does not start preconditioning.** Nav did, minutes later, same session.
+
+| t (s) | What | BMS response |
+|---|---|---|
+| 170.7, 174.2, 180.7 | Our 3 bursts (panda TX echo on bus 128), byte-identical to nav's | none. 0x2AA stayed 1, nothing else on buses 0/1/2 reacted |
+| 316.05 | Nav request, one burst (`40 03` ×3, `E0 07` ×3) | 0x2B5 b9 pulses 8 and b8/b16–18 change at +1.0 s; 0x2AA → 5 Preparing at +7.6 s (same as route 139) |
+| 384.0 | | 0x2AA → 21 On, heater 0x25A b18 0 → 52, inlet climbs 8 → 15 °C in 25 s |
+| 410.0 | Nav cancel: `00 00` ×3, `E0 07` ×3 | 0x2AA → 1, heater off, 0x2B5 pulses again |
+
+- Ruled out: pack temp, car state, frame bytes/timing, panda blocking.
+- 0x2B5 (bus 0, 100 ms) is the earliest acknowledgment: b9 = 8 for ~2 s after each accepted request/cancel.
+  It never moved for ours, so whatever accepts the request never saw (or never accepted) our frame.
+- Nothing new appeared on buses 0/1/2 between setting the destination and the request (no nav-context message
+  reaches the comma; 0x4ED absent again).
+- 0x360 b16: 12 before, 50 from Preparing, 12 after cancel, 62 at +30 s. The pre-request value isn't fixed (8 on route 139).
+
+Conclusion: the gateway forwards 0xC7 from the head unit's side onto bus 0 but not the other way, and/or the BMS
+also needs nav context that only exists on M-CAN. Both point the same way: the request has to be injected on
+M-CAN behind the head unit (as tylerharvey/dragz do), not at the camera harness.
